@@ -312,6 +312,44 @@ class KnapSack():
         return Q_opt
 
 
+class LevenshteinDP():
+
+    def __init__(self, a, b):
+        """
+        Instantiate memory for computing edit distance between word a <str> and word b <str>.
+        """
+
+        # Store word strings.
+        self.w1 = a
+        self.w2 = b
+
+        # Compute edit distance matrix with initial edit metrics for total deletion or insertion.
+        self.edit = [
+            [ max(i,j) if j == 0 or i == 0 else 0 for j in range(len(b)+1) ] 
+            for i in range(len(a)+1)
+        ]
+
+    def edit_distance(self):
+        """
+        Compute the Levenshtein edit distance between the specified words.
+        """
+
+        # Loop through both words.
+        for i in range(1, len(self.w1)+1):
+            for j in range(1, len(self.w2)+1):
+
+                # Edit. Test and penalize insert, delete, and replace.
+                edit_penalty = 1 if self.w1[i-1] != self.w2[j-1] else 0
+                self.edit[i][j] = min(
+                    self.edit[i-1][j],
+                    self.edit[i][j-1],
+                    self.edit[i-1][j-1]
+                ) + edit_penalty
+
+        # Print optimal alignment score.
+        return self.edit[-1][-1]
+
+
 """ Algorithm Testing """
 
 # print(f"Testing TarjanSCC()...")
@@ -357,3 +395,7 @@ class KnapSack():
 # COST = [2, 2, 3, 4, 5]
 # ks = KnapSack(VALUE, COST, weight=8, repetition=False)
 # print(ks.compute_knapsack())
+
+# print(f"Testing LevenshteinDP()...")
+# ld = LevenshteinDP("hello", "brushllw")
+# print(ld.edit_distance())
