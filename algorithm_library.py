@@ -74,7 +74,7 @@ class TarjanSCC():
         # Explore adjacent nodes.
         for w in range(len(self.G)):
             # Adjacent reachable nodes.
-            if self.G[v][w] == 1:   
+            if self.G[v][w] != 0:
                 # Unexplored node.
                 if self.D[w]['index'] is None:
                     # Analyze strongly-connected sub-component of node w.
