@@ -350,6 +350,65 @@ class LevenshteinDP():
         return self.edit[-1][-1]
 
 
+class WaterCapture():
+    """
+    [Greedy Water Capture Problem]
+    Given a collection of wall(s) / barrier(s) with various height, 
+    compute the optimal rectangular container represented by precisely 
+    2 wall(s) / barrier(s) that capture the most rainwater measured by 
+    the cross-sectional area of the container.
+
+    |~~~~~~~~~~~~~~         
+    | Water_Area=9 |
+    |    |         |    |
+    |____|____|____|____|____|
+    """
+
+    def __init__(self, height_vector):
+        """
+        Initialize parameters to solve the greedy water capture problem 
+        given a vector of wall heights.
+        :param height_vector <list<float>>: List of wall heights.
+        """
+        
+        # Store container information.
+        self.bars = height_vector
+
+        # Instantiate search pointers.
+        self.L = 0
+        self.R = len(height_vector)-1
+        self.x_area = 0
+
+    def water_volume(self):
+        """
+        Compute the optimal volume of water captured by 
+        a container formed from the wall(s) / barrier(s).
+        """
+
+        # Loop over all width(s) of all possible containers
+        # from largest (len(self.bars) - 1) to smallest (1).
+        for width in range(len(self.bars)-1, 0, -1):
+
+            # Implement a greedy search method. Minimum bar height
+            # of a container dictates the cross-sectional area,
+            # so searching for a different bar on the side of
+            # the container with greater height can only decrease
+            # the cross-sectional area via decreasing the width
+            # of the tested container.
+            if self.bars[self.L] < self.bars[self.R]:
+                # Track cross-sectional area.
+                self.x_area = max(self.x_area, self.bars[self.L] * width)
+                # Test different container.
+                self.L += 1            
+            else:
+                # Track cross-sectional area.
+                self.x_area = max(self.x_area, self.bars[self.R] * width)
+                # Test different container.
+                self.R -= 1
+
+        return self.x_area
+
+
 """ Algorithm Testing """
 
 # print(f"Testing TarjanSCC()...")
@@ -399,3 +458,8 @@ class LevenshteinDP():
 # print(f"Testing LevenshteinDP()...")
 # ld = LevenshteinDP("hello", "brushllw")
 # print(ld.edit_distance())
+
+# print(f"Testing WaterCapture()...")
+# BARS = [ 4, 2, 1, 3, 2, 1 ]
+# wc = WaterCapture(BARS)
+# print(wc.water_volume())
