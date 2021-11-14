@@ -352,8 +352,8 @@ class KnapSack():
 # print(tree)
 # print(score)
 
-print(f"Testing KnapSack()...")
-VALUE = [4, 2, 1, 6, 7]
-COST = [2, 2, 3, 4, 5]
-ks = KnapSack(VALUE, COST, weight=0, repetition=False)
-print(ks.compute_knapsack())
+# print(f"Testing KnapSack()...")
+# VALUE = [4, 2, 1, 6, 7]
+# COST = [2, 2, 3, 4, 5]
+# ks = KnapSack(VALUE, COST, weight=8, repetition=False)
+# print(ks.compute_knapsack())
