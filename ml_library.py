@@ -1,3 +1,4 @@
+import sys
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn import *
@@ -12,64 +13,55 @@ class MatrixFactorize(Module):
 
     def __init__(self, M: Union[torch.Tensor, np.ndarray], dim, bias=True, seed=None):
         """
-        Instantiate variables for matrix factorization, i.e. M = A * B.
-        :param M <torch.Tensor|numpy.ndarray>:  Input 2-D matrix to factorize into A and B.
+        Instantiate variables for matrix factorization, i.e. M = A * B + C.
+        :param M <torch.Tensor|numpy.ndarray>:  Input 2-D matrix to factorize into A and B (with bias C).
         :param dim <int>:                       Hidden / latent dimension of matrix factorization.
-        :param bias <bool>:                     Utilize bias in factorization. Set to False for pure linear factorization.
+        :param bias <bool>:                     Utilize bias in factorization. Set to False to exclude affine bias C.
         :param seed <int>:                      Random seed fixture for reproducibility.
         """
         super().__init__()
 
-        # Parameters
-        self.x, self.y, *_ = M.shape
+        # Validate matrix.
+        if len(M.shape) != 2 or dim <= 0:
+            print(
+                f"[MatrixInputError] MatrixFactorize() only supports 2-D matrices. " +
+                f"Moreover, the hidden dimension is necessarily > 0.",
+                file=sys.stderr, flush=True
+            )
+            return None
+
+        # Class Parameters
+        self.M = torch.Tensor(M)
+        self.x, self.y = self.M.shape
         self.dim = dim
         self.bias = bias
 
         # Fix random seed.
         if seed is not None:
-            torch.manual_seed(seed)
+            torch_gen = torch.manual_seed(seed)
 
-        # Matrix Factors
-        self.A = Embedding(self.x, dim)
-        self.B = Embedding(self.y, dim)
+        # Matrix Factors + Affine Bias
+        self.A = Parameter(torch.empty((self.x, self.dim)), requires_grad=True)
+        self.B = Parameter(torch.empty((self.dim, self.y)), requires_grad=True)
+        self.C = Parameter(torch.empty((self.x, self.y)), requires_grad=True)
+        init.xavier_uniform_(self.A)
+        init.xavier_uniform_(self.B)
+        init.xavier_uniform_(self.C)
 
-        # Biases
-        self.c1 = Embedding(self.x, 1)
-        self.c2 = Embedding(self.y, 1)
+        # Optimizer
+        self.optimizer = AdamW(self.parameters())
 
-        # 
-
-    def matrix_factors(self):
-        """
-        Output matrix factorization, i.e. self.A and self.B.
-        """
-
-        return {
-            'A': self.A(torch.LongTensor([range(self.x)])).flatten(end_dim=1),
-            'B': self.B(torch.LongTensor([range(self.y)])).flatten(end_dim=1).t(),
-            'A_c': self.c1(torch.LongTensor([range(self.x)])).flatten(end_dim=1),
-            'B_c': self.c2(torch.LongTensor([range(self.y)])).flatten(end_dim=1)
-        }
-
-    def forward(self, x, y):
+    def forward(self):
         """
         Compute element of matrix from factorization.
-        :param x <int>:     X-index of the matrix.
-        :param y <int>:     Y-index of the matrix.
         """
-
-        # Lookup weights and biases.
-        A_x = self.A(torch.LongTensor([x]))
-        c_x = self.c1(torch.LongTensor([x]))
-        B_y = self.B(torch.LongTensor([y]))
-        c_y = self.c2(torch.LongTensor([y]))
-
-        # Estimate matrix product or recommendation.
-        output = torch.matmul(A_x, B_y.t())
+        
+        # Compute product matrix or recommendation.
+        output = torch.matmul(self.A, self.B)
         if self.bias:
             # Include affine bias.
-            output += c_x + c_y
-        return torch.flatten(output)
+            output += self.C
+        return output
 
     def fit(self):
         """
