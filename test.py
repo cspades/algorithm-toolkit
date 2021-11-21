@@ -58,10 +58,12 @@ from ml_library import *
 
 
 """ Machine Learning Library Testing """
-SEED = 0
-rng = np.random.default_rng(SEED)
-M = rng.integers(256, size=(5,9))
-Z = 15
-m = MatrixFactorize(M, Z, bias=True, seed=SEED)
-m.fit()
-print(m)
+
+# print(f"Testing MatrixFactorize()...")
+# SEED = 0
+# rng = np.random.default_rng(SEED)
+# M = rng.integers(256, size=(5,9))
+# Z = 15
+# m = MatrixFactorize(M, Z, bias=True, seed=SEED)
+# m.fit()
+# print(m)
