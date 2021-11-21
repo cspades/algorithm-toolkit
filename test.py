@@ -91,6 +91,7 @@ from ml_library import *
 # fm.fit(
 #     INPUT,
 #     TARGET,
+#     mask=rng.integers(2, size=(N,X)),
 #     cycles=100,
 #     lr=2e-3,
 #     batch_frac=0.01,
