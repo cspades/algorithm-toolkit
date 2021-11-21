@@ -62,5 +62,6 @@ SEED = 0
 rng = np.random.default_rng(SEED)
 M = rng.integers(256, size=(5,9))
 Z = 15
-m = MatrixFactorize(M, Z, bias=False, seed=SEED)
-print(m())
+m = MatrixFactorize(M, Z, bias=True, seed=SEED)
+m.fit()
+print(m)
