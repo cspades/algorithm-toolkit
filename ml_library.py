@@ -17,7 +17,7 @@ class MatrixFactorize(Module):
         Instantiate variables for matrix factorization, i.e. M = A * B + C.
         :param M <torch.Tensor|numpy.ndarray>:      Input 2-D matrix to factorize into A and B (with bias C).
         :param dim <int>:                           Hidden / latent dimension of matrix factorization.
-        :param mask <torch.Tensor|numpy.ndarray>:   Mask matrix with shape equivalent to M. 
+        :param mask <torch.Tensor|numpy.ndarray>:   Element observability mask matrix with shape equivalent to M. 
                                                     Non-zero implies True, while zero implies False.
         :param bias <bool>:                         Utilize bias in factorization. Set to False to exclude affine bias C.
         :param seed <int>:                          Random seed fixture for reproducibility.
@@ -241,6 +241,7 @@ class FactorizationMachine(Module):
         self, 
         X: Union[torch.Tensor, np.ndarray], 
         Y: Union[torch.Tensor, np.ndarray], 
+        mask: Union[torch.Tensor, np.ndarray] = None, 
         cycles=100, 
         lr=2e-3, 
         batch_frac=0.01, 
@@ -250,20 +251,22 @@ class FactorizationMachine(Module):
     ):
         """
         Train the Factorization Machine.
-        :param X <torch.Tensor>:    Input training data features of shape (N, input_dim).
-        :param Y <torch.Tensor>:    Target training data class / score vector of shape (N, 1).
-        :param cycles <int>:        Number of gradient descent cycles.
-        :param lr <float>:          Learning rate. Re-calibrated to order of values in matrix M.
-        :param batch_frac <float>:  Fraction of the dataset to set as the batch size.
-        :param regularize <float>:  Weight decay lambda for regularization in AdamW.
-        :param patience <int>:      Number of cycles of convergence before termination.
-        :param verbose <bool>:      Output training progress information.
+        :param X <torch.Tensor>:        Input training data features of shape (N, X).
+        :param Y <torch.Tensor>:        Target training data class / score vector of shape (N, 1).
+        :param mask <torch.Tensor>:     Feature observability mask for X of shape (N, X).
+        :param cycles <int>:            Number of gradient descent cycles.
+        :param lr <float>:              Learning rate. Re-calibrated to order of values in matrix M.
+        :param batch_frac <float>:      Fraction of the dataset to set as the batch size.
+        :param regularize <float>:      Weight decay lambda for regularization in AdamW.
+        :param patience <int>:          Number of cycles of convergence before termination.
+        :param verbose <bool>:          Output training progress information.
         """
 
         # Validate arguments.
         if any([
             len(X.shape) != 2,
             len(Y.shape) != 2,
+            mask is not None and mask.shape != X.shape,
             X.shape[1] != self.input_dim,
             Y.shape[1] != 1,
             cycles <= 0,
@@ -274,7 +277,8 @@ class FactorizationMachine(Module):
             print(
                 f"[FactorizationMachine.fit()] Improper training argument(s) to fit(). Aborting... \n" +
                 f"""FactorizationMachine.fit() Requirements:
-                - X is a (N, x_features) Tensor and Y is a (N, 1) Tensor.
+                - X is a (N, data_dim) Tensor and Y is a (N, 1) Tensor.
+                - mask is an optional (N, data_dim) Tensor.
                 - cycles > 0
                 - lr > 0
                 - batch_frac > 0
@@ -284,12 +288,16 @@ class FactorizationMachine(Module):
             )
             return
 
-        # Convert to torch.Tensor.
+        # Convert and instantiate Tensor(s).
         N = X.shape[0]
         if not torch.is_tensor(X):
             X = torch.Tensor(X)
         if not torch.is_tensor(Y):
             Y = torch.Tensor(Y)
+        mask_tensor = torch.ones(X.shape)
+        if mask is not None:
+            # Construct Boolean mask Tensor.
+            mask_tensor = torch.where(torch.Tensor(mask) != 0, 1, 0)
 
         # Instantiate optimizer.
         optimizer = AdamW(
@@ -317,12 +325,13 @@ class FactorizationMachine(Module):
                 # Extract batch.
                 X_batch = X[rand_idx]
                 Y_batch = Y[rand_idx]
+                mask_batch = mask_tensor[rand_idx]
 
                 # Clear gradients in optimizer.
                 self.zero_grad()
 
                 # Compute model prediction mean and deviation.
-                Y_mu, Y_sigma = self(X_batch)
+                Y_mu, Y_sigma = self(X_batch * mask_batch)
 
                 # Compute Gaussian distributional loss.
                 loss = GaussianNLLLoss()(Y_mu, Y_batch, Y_sigma)

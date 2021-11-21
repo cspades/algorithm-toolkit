@@ -399,7 +399,7 @@ class WaterCapture():
                 # Track cross-sectional area.
                 self.x_area = max(self.x_area, self.bars[self.L] * width)
                 # Test different container.
-                self.L += 1            
+                self.L += 1
             else:
                 # Track cross-sectional area.
                 self.x_area = max(self.x_area, self.bars[self.R] * width)
