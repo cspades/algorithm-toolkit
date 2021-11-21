@@ -48,13 +48,6 @@ class MatrixFactorize(Module):
         init.xavier_uniform_(self.B)
         init.xavier_uniform_(self.C)
 
-        # Instantiate optimizer. Tune learning rate to order of magnitude of matrix M.
-        self.lr = 8e-4 * self.M.sum() / torch.numel(self.M)
-        self.optimizer = AdamW(
-            self.parameters(),
-            lr=self.lr
-        )
-
         # Track training loss.
         self.loss = float('inf')
 
@@ -73,7 +66,7 @@ class MatrixFactorize(Module):
         output_buffer += f"\nMatrix A:\n\n{self.A.detach().numpy().round(2)}\n"
         output_buffer += f"\nMatrix B:\n\n{self.B.detach().numpy().round(2)}\n"
         output_buffer += f"\nMatrix C:\n\n{self.C.detach().numpy().round(2)}\n"
-        output_buffer += f"\nRegression Loss: {self.loss}"
+        output_buffer += f"\nRegression Loss: {self.loss}\n"
 
         # Reset notation.
         np.set_printoptions(suppress=False)
@@ -92,13 +85,22 @@ class MatrixFactorize(Module):
             output += self.C
         return output
 
-    def fit(self, cycles=1000, regularize=0, patience=3):
+    def fit(self, cycles=1000, lr=8e-4, regularize=0.0001, patience=3, verbose=False):
         """
         Train the factorization.
         :param cycles <int>:        Number of gradient descent cycles.
-        :param regularize <float>:  Regularization lambda for regression fit. Default to 0.
+        :param lr <float>:          Learning rate. Re-calibrated to order of values in matrix M.
+        :param regularize <float>:  Regularization lambda for regression fit.
         :param patience <int>:      Number of cycles of convergence before termination.
+        :param verbose <bool>:      Output training progress information.
         """
+
+        # Instantiate optimizer. Tune learning rate to order of magnitude of matrix M.
+        lr_calibrate = lr * self.M.sum() / torch.numel(self.M)
+        optimizer = AdamW(
+            self.parameters(),
+            lr=lr_calibrate
+        )
 
         # Train factorization.
         factor_opt = self.state_dict()
@@ -117,7 +119,7 @@ class MatrixFactorize(Module):
                     loss += regularize * torch.linalg.norm(weight) ** 2
 
             # Validate training.
-            if i % 100 == 0:
+            if i % 100 == 0 and verbose:
                 print(
                     f"Training Cycle: {i+1} / {cycles} | Factorization Loss: {loss.item()}",
                     file=sys.stdout, flush=True
@@ -141,7 +143,7 @@ class MatrixFactorize(Module):
             loss.backward()
 
             # Apply gradients.
-            self.optimizer.step()
+            optimizer.step()
 
 
 class AutoRec(Module):
