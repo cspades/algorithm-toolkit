@@ -127,6 +127,12 @@ class MatrixFactorize(Module):
                 for weight in weight_vector:
                     loss += regularize * torch.linalg.norm(weight) ** 2
 
+            # Back-propagate.
+            loss.backward()
+
+            # Apply gradients.
+            optimizer.step()
+
             # Validate training.
             if i % 100 == 0 and verbose:
                 print(
@@ -147,12 +153,6 @@ class MatrixFactorize(Module):
                     # Model convergence. Revert to optimal factorization. Terminate training.
                     self.load_state_dict(factor_opt)
                     break
-
-            # Back-propagate.
-            loss.backward()
-
-            # Apply gradients.
-            optimizer.step()
 
 
 class FactorizationMachine(Module):
