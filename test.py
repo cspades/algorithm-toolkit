@@ -61,9 +61,16 @@ from ml_library import *
 
 # print(f"Testing MatrixFactorize()...")
 # SEED = 0
+# SHAPE = (5,9)
 # rng = np.random.default_rng(SEED)
-# M = rng.integers(256, size=(5,9))
-# Z = 15
-# m = MatrixFactorize(M, Z, bias=True, seed=SEED)
+# M = rng.integers(100, size=SHAPE)
+# Z = 3
+# m = MatrixFactorize(
+#     M,
+#     Z,
+#     mask=rng.integers(2, size=SHAPE),
+#     bias=True,
+#     seed=SEED
+# )
 # m.fit()
 # print(m)

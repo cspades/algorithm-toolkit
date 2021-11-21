@@ -11,13 +11,15 @@ class MatrixFactorize(Module):
     Matrix Factorization Model for Numerical Factorization and Recommender Systems
     """
 
-    def __init__(self, M: Union[torch.Tensor, np.ndarray], dim, bias=True, seed=None):
+    def __init__(self, M: Union[torch.Tensor, np.ndarray], dim, mask: Union[torch.Tensor, np.ndarray] = None, bias=True, seed=None):
         """
         Instantiate variables for matrix factorization, i.e. M = A * B + C.
-        :param M <torch.Tensor|numpy.ndarray>:  Input 2-D matrix to factorize into A and B (with bias C).
-        :param dim <int>:                       Hidden / latent dimension of matrix factorization.
-        :param bias <bool>:                     Utilize bias in factorization. Set to False to exclude affine bias C.
-        :param seed <int>:                      Random seed fixture for reproducibility.
+        :param M <torch.Tensor|numpy.ndarray>:      Input 2-D matrix to factorize into A and B (with bias C).
+        :param dim <int>:                           Hidden / latent dimension of matrix factorization.
+        :param mask <torch.Tensor|numpy.ndarray>:   Mask matrix with shape equivalent to M. 
+                                                    Non-zero implies True, while zero implies False.
+        :param bias <bool>:                         Utilize bias in factorization. Set to False to exclude affine bias C.
+        :param seed <int>:                          Random seed fixture for reproducibility.
         """
         super().__init__()
 
@@ -35,6 +37,10 @@ class MatrixFactorize(Module):
         self.x, self.y = self.M.shape
         self.dim = dim
         self.bias = bias
+        self.mask = torch.ones(self.M.shape)
+        if mask is not None and mask.shape == self.M.shape:
+            # Construct Boolean mask Tensor.
+            self.mask = torch.where(torch.Tensor(mask) != 0, 1, 0)
 
         # Fix random seed.
         if seed is not None:
@@ -61,7 +67,8 @@ class MatrixFactorize(Module):
 
         # Collect information.
         output_buffer = f"\nMatrix Factorization Output (M = A * B + C)\n"
-        output_buffer += f"\nOriginal Matrix:\n\n{self.M.numpy()}\n"
+        output_buffer += f"\nTarget Matrix:\n\n{self.M.numpy()}\n"
+        output_buffer += f"\nMask Matrix:\n\n{self.mask.numpy()}\n"
         output_buffer += f"\nApprox. Matrix:\n\n{self().detach().numpy().round(2)}\n"
         output_buffer += f"\nMatrix A:\n\n{self.A.detach().numpy().round(2)}\n"
         output_buffer += f"\nMatrix B:\n\n{self.B.detach().numpy().round(2)}\n"
@@ -111,7 +118,9 @@ class MatrixFactorize(Module):
             self.zero_grad()
 
             # Compute loss of matrix factorization.
-            loss = torch.linalg.norm(self() - self.M) ** 2
+            loss = torch.linalg.norm(
+                (self() - self.M) * self.mask
+            ) ** 2
             if regularize != 0:
                 weight_vector = [self.A, self.B]
                 if self.bias: weight_vector.append(self.C)
