@@ -65,5 +65,5 @@ from ml_library import *
 # M = rng.integers(256, size=(5,9))
 # Z = 15
 # m = MatrixFactorize(M, Z, bias=True, seed=SEED)
-# m.fit()
+# m.fit(regularize=0.0001)
 # print(m)

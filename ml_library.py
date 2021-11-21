@@ -142,3 +142,15 @@ class MatrixFactorize(Module):
 
             # Apply gradients.
             self.optimizer.step()
+
+
+class AutoRec(Module):
+    """
+    Auto-Encoding Recommendation Neural Network
+    """
+
+    def __init__(self) -> None:
+        """
+        Instantiate class attributes for AutoRec.
+        """
+        super().__init__()
