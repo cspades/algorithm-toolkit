@@ -110,7 +110,7 @@ class MatrixFactorize(Module):
         )
 
         # Train factorization.
-        factor_opt = self.state_dict()
+        factor_opt = dict(self.state_dict())
         timer = 0
         for i in range(cycles):
 
@@ -135,7 +135,7 @@ class MatrixFactorize(Module):
                 )
             if loss.item() < self.loss:
                 # Update optimal factorization.
-                factor_opt = self.state_dict()
+                factor_opt = dict(self.state_dict())
                 # Update optimal loss.
                 self.loss = loss.item()
                 # Reset patience timer.
@@ -155,13 +155,97 @@ class MatrixFactorize(Module):
             optimizer.step()
 
 
-class AutoRec(Module):
+class FactorizationMachine(Module):
     """
-    Auto-Encoding Recommendation Neural Network
+    [Factorization Machine Recommendation Model]
+    Learns latent space features to characterize similarity of dataset features
+    to compute a recommendation as a function of dataset features. Dataset
+    features can be mixed / hybrid such that you can combine information
+    on both the recommended object and the recommendation target to generate
+    an informed similarity or recommendation / ranking metric.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, x_features, hidden_dim=25) -> None:
         """
-        Instantiate class attributes for AutoRec.
+        Instantiate class attributes for FM. Constructs a feature similarity matrix
+        F of shape (x_features, hidden_dim) to learn implicit representations of
+        all trainable features in the data for recommendation or ranking.
+        :param x_features <int>:    Number of features to learn from in the dataset.
+        :param hidden_dim <int>:    Dimension of the latent space of features.
         """
         super().__init__()
+
+        # Parameters
+        self.input_dim = x_features
+        self.hidden_dim = hidden_dim
+
+        """ Matrix Factorization """
+
+        # Feature Similarity Matrix
+        self.F = Parameter(
+            torch.empty((self.input_dim, self.hidden_dim)),
+            requires_grad=True
+        )
+        init.xavier_uniform_(self.F)
+
+        """ Linear Regression """
+
+        # Feature Weight Vector and Bias
+        self.V = Parameter(
+            torch.empty((1, self.input_dim)),
+            requires_grad=True
+        )
+        init.xavier_uniform_(self.V)
+        self.bias = Parameter(
+            torch.empty(1),
+            requires_grad=True
+        )
+        init.xavier_uniform_(self.bias)
+
+    def forward(self, x: torch.Tensor):
+        """
+        Compute FactorizationMachine(x).
+        :param x <torch.Tensor>:    Factorization machine input Tensor of shape (N, input_dim).
+        """
+
+        # Compute square of sum and sum of squares.
+        sq_sm = torch.matmul(self.F.t(), x.t()) ** 2
+        sm_sq = torch.matmul(self.F.t() ** 2, x.t() ** 2)
+
+        # Compute linear regression model.
+        lin_reg = torch.matmul(self.V, x.t())
+
+        # Output recommendation / ranking score, i.e. FM(x).
+        return self.bias + torch.sum(lin_reg) + 0.5 * torch.sum(sq_sm - sm_sq)
+
+    def fit(self, X: torch.Tensor, Y: torch.Tensor, cycles=100, lr=2e-3, batch_frac=0.01, regularize=0.0001, patience=3, seed=None, verbose=False):
+        """
+        Train the Factorization Machine.
+        :param X <torch.Tensor>:    Input training data features of shape (N, input_dim).
+        :param Y <torch.Tensor>:    Target training data class / score vector of shape (N, 1).
+        :param cycles <int>:        Number of gradient descent cycles.
+        :param lr <float>:          Learning rate. Re-calibrated to order of values in matrix M.
+        :param batch_frac <float>:  Fraction of the dataset to set as the batch size.
+        :param regularize <float>:  Regularization lambda for regression fit.
+        :param patience <int>:      Number of cycles of convergence before termination.
+        :param seed <int>:          Random seed fixture for reproducibility.
+        :param verbose <bool>:      Output training progress information.
+        """
+
+        # Fix random seed.
+        if seed is not None:
+            torch_gen = torch.manual_seed(seed)
+
+        # Instantiate optimizer.
+        optimizer = AdamW(
+            self.parameters(),
+            lr=lr
+        )
+
+        # Train Factorization Machine.
+        factor_opt = dict(self.state_dict())
+        timer = 0
+        for i in range(cycles):
+
+            # Generate random batches by index.
+            pass
