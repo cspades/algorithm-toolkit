@@ -1,9 +1,10 @@
 import sys
+import math
+import numpy as np
 import torch
 from torch.nn import *
 from torch.optim import AdamW
 from torch.utils.data import Dataset, DataLoader
-import numpy as np
 from typing import Union
 
 class MatrixFactorize(Module):
@@ -43,8 +44,9 @@ class MatrixFactorize(Module):
             self.mask = torch.where(torch.Tensor(mask) != 0, 1, 0)
 
         # Fix random seed.
+        self.torch_gen = None
         if seed is not None:
-            torch_gen = torch.manual_seed(seed)
+            self.torch_gen = torch.manual_seed(seed)
 
         # Matrix Factors + Affine Bias
         self.A = Parameter(torch.empty((self.x, self.dim)), requires_grad=True)
@@ -92,12 +94,12 @@ class MatrixFactorize(Module):
             output += self.C
         return output
 
-    def fit(self, cycles=1000, lr=8e-4, regularize=0.0001, patience=3, verbose=False):
+    def fit(self, cycles=1000, lr=8e-4, regularize=1e-2, patience=3, verbose=False):
         """
         Train the factorization.
         :param cycles <int>:        Number of gradient descent cycles.
         :param lr <float>:          Learning rate. Re-calibrated to order of values in matrix M.
-        :param regularize <float>:  Regularization lambda for regression fit.
+        :param regularize <float>:  Weight decay lambda for regularization in AdamW.
         :param patience <int>:      Number of cycles of convergence before termination.
         :param verbose <bool>:      Output training progress information.
         """
@@ -106,7 +108,8 @@ class MatrixFactorize(Module):
         lr_calibrate = lr * self.M.sum() / torch.numel(self.M)
         optimizer = AdamW(
             self.parameters(),
-            lr=lr_calibrate
+            lr=lr_calibrate,
+            weight_decay=regularize
         )
 
         # Train factorization.
@@ -121,11 +124,6 @@ class MatrixFactorize(Module):
             loss = torch.linalg.norm(
                 (self() - self.M) * self.mask
             ) ** 2
-            if regularize != 0:
-                weight_vector = [self.A, self.B]
-                if self.bias: weight_vector.append(self.C)
-                for weight in weight_vector:
-                    loss += regularize * torch.linalg.norm(weight) ** 2
 
             # Back-propagate.
             loss.backward()
@@ -165,19 +163,25 @@ class FactorizationMachine(Module):
     an informed similarity or recommendation / ranking metric.
     """
 
-    def __init__(self, x_features, hidden_dim=25) -> None:
+    def __init__(self, data_dim, hidden_dim=25, seed=None) -> None:
         """
         Instantiate class attributes for FM. Constructs a feature similarity matrix
         F of shape (x_features, hidden_dim) to learn implicit representations of
         all trainable features in the data for recommendation or ranking.
-        :param x_features <int>:    Number of features to learn from in the dataset.
+        :param data_dim <int>:      Number of features to learn from in the dataset.
         :param hidden_dim <int>:    Dimension of the latent space of features.
+        :param seed <int>:          Random seed fixture for reproducibility.
         """
         super().__init__()
 
         # Parameters
-        self.input_dim = x_features
-        self.hidden_dim = hidden_dim
+        self.input_dim = data_dim       # X
+        self.hidden_dim = hidden_dim    # H
+
+        # Fix random seed.
+        self.torch_gen = None
+        if seed is not None:
+            self.torch_gen = torch.manual_seed(seed)
 
         """ Matrix Factorization """
 
@@ -192,33 +196,58 @@ class FactorizationMachine(Module):
 
         # Feature Weight Vector and Bias
         self.V = Parameter(
-            torch.empty((1, self.input_dim)),
+            torch.empty((self.input_dim, 1)),
             requires_grad=True
         )
         init.xavier_uniform_(self.V)
         self.bias = Parameter(
-            torch.empty(1),
+            torch.zeros(1),
             requires_grad=True
         )
-        init.xavier_uniform_(self.bias)
+
+        """ Gaussian Regression """
+
+        self.gaussian_dist = Linear(
+            in_features=self.hidden_dim,
+            out_features=2
+        )
 
     def forward(self, x: torch.Tensor):
         """
-        Compute FactorizationMachine(x).
+        Compute FactorizationMachine(x). Returns a mean and standard deviation for the recommendation.
         :param x <torch.Tensor>:    Factorization machine input Tensor of shape (N, input_dim).
         """
 
         # Compute square of sum and sum of squares.
-        sq_sm = torch.matmul(self.F.t(), x.t()) ** 2
-        sm_sq = torch.matmul(self.F.t() ** 2, x.t() ** 2)
+        # (N, X) * (X, H) -> (N, H)
+        sq_sm = torch.matmul(x, self.F) ** 2
+        sm_sq = torch.matmul(x ** 2, self.F ** 2)
 
         # Compute linear regression model.
-        lin_reg = torch.matmul(self.V, x.t())
+        # (N, H) * (H, 1) -> (N, 1)
+        lin_reg = torch.matmul(x, self.V)
 
-        # Output recommendation / ranking score, i.e. FM(x).
-        return self.bias + torch.sum(lin_reg) + 0.5 * torch.sum(sq_sm - sm_sq)
+        # Compute latent feature matrix of shape (N, H).
+        latent = self.bias + lin_reg + 0.5 * sq_sm - sm_sq
 
-    def fit(self, X: torch.Tensor, Y: torch.Tensor, cycles=100, lr=2e-3, batch_frac=0.01, regularize=0.0001, patience=3, seed=None, verbose=False):
+        # Fit Gaussian distribution to recommendation.
+        # (N, H) -> (N, 2)
+        output = self.gaussian_dist(latent)
+
+        # Output recommendation / ranking score distribution, i.e. FM(x).
+        return output[:, 0], torch.abs(output[:, 1])
+
+    def fit(
+        self, 
+        X: Union[torch.Tensor, np.ndarray], 
+        Y: Union[torch.Tensor, np.ndarray], 
+        cycles=100, 
+        lr=2e-3, 
+        batch_frac=0.01, 
+        regularize=1e-2, 
+        patience=3, 
+        verbose=False
+    ):
         """
         Train the Factorization Machine.
         :param X <torch.Tensor>:    Input training data features of shape (N, input_dim).
@@ -226,26 +255,101 @@ class FactorizationMachine(Module):
         :param cycles <int>:        Number of gradient descent cycles.
         :param lr <float>:          Learning rate. Re-calibrated to order of values in matrix M.
         :param batch_frac <float>:  Fraction of the dataset to set as the batch size.
-        :param regularize <float>:  Regularization lambda for regression fit.
+        :param regularize <float>:  Weight decay lambda for regularization in AdamW.
         :param patience <int>:      Number of cycles of convergence before termination.
-        :param seed <int>:          Random seed fixture for reproducibility.
         :param verbose <bool>:      Output training progress information.
         """
 
-        # Fix random seed.
-        if seed is not None:
-            torch_gen = torch.manual_seed(seed)
+        # Validate arguments.
+        if any([
+            len(X.shape) != 2,
+            len(Y.shape) != 2,
+            X.shape[1] != self.input_dim,
+            Y.shape[1] != 1,
+            cycles <= 0,
+            lr <= 0,
+            batch_frac <= 0,
+            regularize < 0
+        ]):
+            print(
+                f"[FactorizationMachine.fit()] Improper training argument(s) to fit(). Aborting... \n" +
+                f"""FactorizationMachine.fit() Requirements:
+                - X is a (N, x_features) Tensor and Y is a (N, 1) Tensor.
+                - cycles > 0
+                - lr > 0
+                - batch_frac > 0
+                - regularize >= 0
+                """,
+                file=sys.stderr, flush=True
+            )
+            return
+
+        # Convert to torch.Tensor.
+        N = X.shape[0]
+        if not torch.is_tensor(X):
+            X = torch.Tensor(X)
+        if not torch.is_tensor(Y):
+            Y = torch.Tensor(Y)
 
         # Instantiate optimizer.
         optimizer = AdamW(
             self.parameters(),
-            lr=lr
+            lr=lr,
+            weight_decay=regularize
         )
 
         # Train Factorization Machine.
-        factor_opt = dict(self.state_dict())
+        model_opt = dict(self.state_dict())
+        loss_opt = float('inf')
         timer = 0
         for i in range(cycles):
 
-            # Generate random batches by index.
-            pass
+            # Train on batches of data.
+            for _ in range(math.ceil(1 / batch_frac)):
+
+                # Generate random batches by index.
+                rand_idx = torch.randint(
+                    N,
+                    size=(math.ceil(batch_frac * N),),
+                    generator=self.torch_gen
+                )
+
+                # Extract batch.
+                X_batch = X[rand_idx]
+                Y_batch = Y[rand_idx]
+
+                # Clear gradients in optimizer.
+                self.zero_grad()
+
+                # Compute model prediction mean and deviation.
+                Y_mu, Y_sigma = self(X_batch)
+
+                # Compute Gaussian distributional loss.
+                loss = GaussianNLLLoss()(Y_mu, Y_batch, Y_sigma)
+
+                # Back-propagate.
+                loss.sum().backward()
+
+                # Apply gradients.
+                optimizer.step()
+
+            # Validate training.
+            if i % math.ceil(cycles / 5) == 0 and verbose:
+                print(
+                    f"Training Cycle: {i+1} / {cycles} | Recommendation Loss: {loss.item()}",
+                    file=sys.stdout, flush=True
+                )
+            if loss.sum().item() < loss_opt:
+                # Update optimal factorization.
+                model_opt = dict(self.state_dict())
+                # Update optimal loss.
+                loss_opt = loss.sum().item()
+                # Reset patience timer.
+                timer = 0
+            else:
+                # Increment patience timer.
+                timer += 1
+                if timer > patience:
+                    # Model convergence. Revert to optimal factorization. Terminate training.
+                    self.load_state_dict(model_opt)
+                    break

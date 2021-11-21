@@ -74,3 +74,27 @@ from ml_library import *
 # )
 # m.fit()
 # print(m)
+
+# print(f"Testing FactorizationMachine()...")
+# SEED = 0
+# N = 1000
+# X = 10
+# T = 1
+# H = 10
+# VALUES = (-100, 100)
+# rng = np.random.default_rng(SEED)
+# INPUT = (VALUES[1] - VALUES[0]) * rng.random(size=(N,X)) + VALUES[0]
+# TARGET = rng.integers(2, size=(N,T))
+# fm = FactorizationMachine(
+#     X, H, seed=SEED
+# )
+# fm.fit(
+#     INPUT,
+#     TARGET,
+#     cycles=100,
+#     lr=2e-3,
+#     batch_frac=0.01,
+#     regularize=1e-2,
+#     patience=5,
+#     verbose=True
+# )
