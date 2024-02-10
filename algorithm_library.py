@@ -7,7 +7,61 @@ import sys
 import heapq
 import numpy as np
 
-class TarjanSCC():
+
+
+class FibonacciCache:
+    """
+    Compute all Fibonacci numbers. Optionally, cache them for future calculations.
+    """
+
+    def __init__(self):
+        """
+        Instantiate the FibonacciCache.
+        """
+        self.fiboCache = {0: 0, 1: 1}
+
+    def __repr__(self):
+        """
+        Print the largest Fibonacci number stored in this instance.
+        """
+        return f"Fibonacci Cache Element Number {len(self.fiboCache)} : {self.fiboCache[len(self.fiboCache) - 1]}"
+
+    def fibonacci(self, n: int, cache: bool = True):
+        """
+        Compute all Fibonacci numbers up to n.
+        :param n <int>:         Compute the n-th Fibonacci number.
+        :param cache <bool>:    Used cached implementation.
+        """
+        if cache:
+            return self.cachedFibonacci(n)
+        else:
+            return self.recursiveFibonacci(n)
+    
+    def cachedFibonacci(self, n: int):
+        """
+        Compute Fibonacci numbers using a cache.
+        :param n <int>:     Compute and cache n Fibonacci numbers.
+        """
+        for i in range(n):
+            if i >= len(self.fiboCache):
+                # Inductively compute Fibonacci numbers.
+                self.fiboCache[i] = self.fiboCache[i-1] + self.fiboCache[i-2]
+        # Return requested Fibonacci number.
+        return self.fiboCache[len(self.fiboCache) - 1]
+    
+    def recursiveFibonacci(self, n: int):
+        """
+        Compute Fibonacci numbers via recursion.
+        :param n <int>:     Compute the n-th Fibonacci number.
+        """
+        if n == 0 or n == 1:
+            return n
+        else:
+            # Recursively compute Fibonacci numbers.
+            self.fiboCache[n] = self.recursiveFibonacci(n-1) + self.recursiveFibonacci(n-2)
+            return self.fiboCache[n]
+
+class TarjanSCC:
     """
     Compute all strongly-connected components in a directed graph G.
     Utilizes Tarjan's strongly-connected components recursion DFS algorithm.
@@ -112,7 +166,7 @@ class TarjanSCC():
         return scc_detect
 
 
-class DijkstraBFS():
+class DijkstraBFS:
 
     def __init__(self, graph, maximal=False):
         """
@@ -188,7 +242,7 @@ class DijkstraBFS():
         return self.dist, self.path
 
 
-class KruscalMST():
+class KruscalMST:
 
     def __init__(self, graph, maximal=False):
         """
@@ -248,7 +302,7 @@ class KruscalMST():
         return tree, score
 
 
-class KnapSack():
+class KnapSack:
 
     def __init__(self, value: list[float], cost: list[int], weight=None, repetition=False):
         """
@@ -326,7 +380,7 @@ class KnapSack():
         return Q_opt
 
 
-class LevenshteinDP():
+class LevenshteinDP:
 
     def __init__(self, a, b):
         """
@@ -364,7 +418,7 @@ class LevenshteinDP():
         return self.edit[-1][-1]
 
 
-class WaterCapture():
+class WaterCapture:
     """
     [Greedy Water Capture Problem]
     Given a collection of wall(s) / barrier(s) with various height, 

@@ -1,7 +1,24 @@
 from algorithm_library import *
 from ml_library import *
+import time
 
 """ Algorithm Library Testing """
+
+# print(f"Testing FibonacciCache...")
+# fc = FibonacciCache()
+# t1 = time.time()
+# fc.fibonacci(2500)
+# t2 = time.time()
+# print(f"{fc} | Time Spent: {t2-t1} sec")
+# t3 = time.time()
+# fc.fibonacci(5000)
+# t4 = time.time()
+# print(f"{fc} | Time Spent: {t4-t3} sec")
+# recNum = 25
+# t5 = time.time()
+# fc.fibonacci(recNum, False)
+# t6 = time.time()
+# print(f"Fibonacci Number {recNum}: {fc.fiboCache[recNum]} | Recursive Time Spent: {t6-t5} sec")
 
 # print(f"Testing TarjanSCC()...")
 # G = [
