@@ -5,7 +5,7 @@ For personal educational review.
 """
 import sys
 import heapq
-
+import numpy as np
 
 class TarjanSCC():
     """
@@ -147,10 +147,13 @@ class DijkstraBFS():
         # Search from all initial nodes in case of directed or disconnected components.
         task = list(range(len(self.G)))
         if initial_node is not None and initial_node in task:
+            # Only search from the initial node instead. More efficient.
             task = [initial_node]
         for v in task:
             # Reset queue and processed set.
             heap = []
+            # FIFO Queue for BFS. Using a min heap 
+            # to sort by edge weight.
             heapq.heappush(
                 heap, 
                 (0,v)
@@ -225,10 +228,12 @@ class KruscalMST():
             # Pop the minimal edge.
             w, e = heapq.heappop(self.E)
 
-            # Combine sets.
+            # Combine sets of edges if the sets associated
+            # to each vertex of edge e are not from the same
+            # tree, preventing cycles from being created.
             if self.setcache[e[0]] != self.setcache[e[1]]:
 
-                # Union.
+                # Union the trees to create a larger spanning tree.
                 u = self.setcache[e[0]] | self.setcache[e[1]]
                 self.setcache[e[0]] = u
                 self.setcache[e[1]] = u
@@ -245,7 +250,7 @@ class KruscalMST():
 
 class KnapSack():
 
-    def __init__(self, value, cost, weight=None, repetition=False):
+    def __init__(self, value: list[float], cost: list[int], weight=None, repetition=False):
         """
         Instantiate dynamic memory for the KnapSack Problem.
         :param value <list<float>>:     List of values / gains / profits for items in the knapsack.
@@ -276,7 +281,12 @@ class KnapSack():
         if weight is not None:
             # Set custom knapsack limit for efficiency.
             self.limit = int(weight)
-        self.Q = {  # Reward matrix of shape (weight, item).
+        self.Q = {  # Initialize reward matrix of shape (weight, items).
+            # Item -1 represents item repetition for each weight,
+            # tracking the highest value knapsack by relaxing
+            # the constraint that knapsacks must build from
+            # previous chosen items. Instead, it just builds
+            # off the previous weight's maximum value knapsack.
             **{ w: { -1: (0, []) } for w in range(self.limit+1) },
             **{ 0: { k: (0, []) for k in range(-1, len(value)) } }
         }
@@ -291,11 +301,15 @@ class KnapSack():
         for w in range(self.limit+1):
             for k in range(len(self.value)): 
                 if self.cost[k] > w:
-                    # Cannot add item into knapsack without overflowing the limit.
-                    # Set to knapsack not including item k.
+                    # Cannot even add item to an empty knapsack
+                    # without overflowing the weight limit.
+                    # Set to knapsack not including item k, i.e.
+                    # persisting the same weight w.
                     self.Q[w][k if not self.rep else -1] = self.Q[w][k-1 if not self.rep else -1]
                 else:
+                    # Analyze reward from adding new item to knapsack.
                     test_val = self.Q[w-self.cost[k]][k-1 if not self.rep else -1][0] + self.value[k]
+                    # If the reward is greater than the highest value knapsack of the same weight...
                     if test_val > self.Q[w][k-1 if not self.rep else -1][0]:
                         # Include new item. Update knapsack.
                         self.Q[w][k if not self.rep else -1] = (
@@ -303,7 +317,7 @@ class KnapSack():
                             self.Q[w-self.cost[k]][k-1 if not self.rep else -1][1] + [k]
                         )
                     else:
-                        # Exclude new item.
+                        # Exclude new item. Continue using the knapsack with the same weight.
                         self.Q[w][k if not self.rep else -1] = self.Q[w][k-1 if not self.rep else -1]
                 # Update optimal knapsack.
                 if self.Q[w][k if not self.rep else -1][0] > Q_opt[0]:
