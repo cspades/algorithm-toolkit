@@ -6,7 +6,131 @@ For personal educational review.
 import sys
 import heapq
 import numpy as np
+from collections.abc import Callable
 
+class LinkedList:
+    """
+    Linked list implementation with common transformations.
+    No practical use besides brain-teasing.
+    """
+
+    class Node:
+        """
+        LinkedList Node
+        """
+        def __init__(self, data):
+            self.data = data
+            self.next = None
+        def __repr__(self):
+            return f"{self.data}"
+
+    def __init__(self):
+        """
+        Instantiate (non-empty) LinkedList.
+        """
+        self.head = self.Node("HEAD")
+
+    def __repr__(self):
+        """
+        Print LinkedList.
+        """
+        listOutput = []
+        nodeIter = self.head
+        while nodeIter is not None:
+            listOutput.append(nodeIter)
+            nodeIter = nodeIter.next
+        return " -> ".join([f"{x.data}" for x in listOutput])
+    
+    def iterate(self, terminateCondition: Callable[..., bool]):
+        """
+        Iterate until termination condition is satisfied.
+        """
+        nodeIter = self.head
+        while nodeIter is not None and not terminateCondition(nodeIter):
+            nodeIter = nodeIter.next
+        return nodeIter
+
+    def append(self, node: Node):
+        """
+        Append Node to LinkedList.
+        """
+        # Search for the final node in the LinkedList.
+        finalNode = self.iterate(lambda x: x.next is None)
+        finalNode.next = node
+        return node
+    
+    def delete(self, data):
+        """
+        Delete the initial node containing data.
+        Return data if deleted, else return None.
+        """
+        # Search for node before the node with matching data.
+        prevSearchNode = self.iterate(lambda x: x.next is not None and x.next.data == data)
+        # Delete the node if not None.
+        if prevSearchNode is not None:
+            prevSearchNode.next = prevSearchNode.next.next
+            return data
+        else:
+            # Iterated to the end of the LinkedList. Do not delete.
+            return None
+        
+    def clear(self):
+        """
+        Clear the LinkedList.
+        """
+        # Create a new HEAD node.
+        self.head = self.Node("HEAD")
+
+    def swap(self, data1, data2):
+        """
+        Swap two nodes in the LinkedList.
+        
+        For example, swap(2,4) ~ swap(4,2) implies:
+
+        {1 -> [2] -> 3 -> [4] -> 5}  =>  {1 -> [4] -> 3 -> [2] -> 5}
+
+                     |                                ^
+                     v                                |
+
+        {1 -> [2]    3 <> [4] -> 5}  =>  {1    [2] <- 3 <- [4] -> 5}
+               |-----------------^        |     |-----------------^
+                                          |-----------------^
+        """
+        # Search for the nodes before the two nodes to swap.
+        prevFirstNode = self.iterate(lambda x: x.next is not None and x.next.data == data1)
+        prevSecondNode = self.iterate(lambda x: x.next is not None and x.next.data == data2)
+        if prevFirstNode is None or prevSecondNode is None:
+            # At least one of the nodes does not exist. Do nothing.
+            raise LookupError("At least one of the nodes specified does not exist and cannot be swapped.")
+        
+        # Swap next node pointers.
+        tempFirstNext = prevFirstNode.next.next
+        prevFirstNode.next.next = prevSecondNode.next.next
+        prevSecondNode.next.next = tempFirstNext
+
+        # Swap prev node pointers.
+        tempFirst = prevFirstNode.next
+        prevFirstNode.next = prevSecondNode.next
+        prevSecondNode.next = tempFirst
+
+    def reverse(self):
+        """
+        Reverse the LinkedList.
+        """
+        # Iterate through the list, reversing each of the next pointers.
+        nodeIter = self.head.next
+        prevIter = None
+        while nodeIter is not None:
+            # Save next node to iterate to.
+            tempNext = nodeIter.next
+            # Reverse direction of list.
+            nodeIter.next = prevIter
+            # Track current node as next previous node for reversal.
+            prevIter = nodeIter
+            # Iterate to next node.
+            nodeIter = tempNext
+        # Reset the HEAD node to point to the final previous node.
+        self.head.next = prevIter
 
 
 class FibonacciCache:

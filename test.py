@@ -4,6 +4,25 @@ import time
 
 """ Algorithm Library Testing """
 
+print(f"Testing LinkedList...")
+ll = LinkedList()
+ll.append(LinkedList.Node("1"))
+ll.append(LinkedList.Node("2"))
+ll.append(LinkedList.Node("3"))
+ll.append(LinkedList.Node("4"))
+ll.append(LinkedList.Node("5"))
+print(ll)
+ll.delete("3")
+print(ll)
+ll.swap("5", "2")
+print (ll)
+ll.reverse()
+print(ll)
+ll.clear()
+print(ll)
+ll.reverse()
+print(ll)
+
 # print(f"Testing FibonacciCache...")
 # fc = FibonacciCache()
 # t1 = time.time()
