@@ -6,6 +6,7 @@ For personal educational review.
 import sys
 import heapq
 import math
+import random
 import numpy as np
 from abc import ABCMeta, abstractmethod
 from typing import Any, TypeVar
@@ -781,3 +782,48 @@ class WaterCapture:
         # Return integrated volume.
         return volume
                 
+
+class Numerics:
+
+    @staticmethod
+    def rand5():
+        return round(random.random() * 5 - 0.5)
+    
+    @staticmethod
+    def rand7FromRand5():
+        """
+        Encode combinations of {0,1,2,3,4} into possibilities for {0,1,2,3,4,5,6}.
+        Reject non-defined combinations and regenerate the combinations.
+        """
+        # Execute rand5 multiple times and assign combinations to [0,6].
+        while True:
+            r1 = Numerics.rand5()
+            r2 = Numerics.rand5()
+            x = 5 * r1 + r2
+            # Delete non-defined combinations.
+            if x < 21:
+                # Return rand7.
+                return x % 7
+            
+    @staticmethod
+    def recursiveShuffle(n: int) -> list[int]:
+        """
+        Inductively generate a random permutation of n >>> 1.
+        Returns a list of integers spanning [n-1] = {0, ..., n-1}.
+        """
+        if n < 0:
+            # Empty list.
+            return []
+        else:
+            # Shuffle n-1 elements.
+            subShuffle = Numerics.recursiveShuffle(n-1)
+            # Append the new element.
+            subShuffle.append(n)
+            # Randomly swap the new element with a shuffled element.
+            # Note that the probability is uniform:
+            # 1/(n-1)! * 1/n = 1 / n!
+            randomChoice = random.randint(0, n)
+            subShuffle[randomChoice], subShuffle[-1] = subShuffle[-1], subShuffle[randomChoice]
+        
+        # Return shuffled list.
+        return subShuffle 
