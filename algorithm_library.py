@@ -5,8 +5,127 @@ For personal educational review.
 """
 import sys
 import heapq
+import math
 import numpy as np
-from collections.abc import Callable
+from abc import ABCMeta, abstractmethod
+from typing import Any, TypeVar
+from collections.abc import Callable, MutableSequence
+
+class QuickSort:
+    """
+    QuickSort implementation with Lomuto "median-of-three" partitioning.
+    """
+
+    class Comparable(metaclass=ABCMeta):
+        """
+        ABC for enforcing __lt__ comparability.
+        """
+        @abstractmethod
+        def __lt__(self, other: Any) -> bool: ...
+
+    CT = TypeVar("CT", bound=Comparable)
+
+    @staticmethod
+    def sort(seq: MutableSequence[CT], reverse: bool = False):
+        """
+        Static function for executing in-place QuickSort on the MutableSequence provided.
+        """
+        if seq:
+            # Instantiate QuickSort boundaries.
+            low = 0
+            high = len(seq) - 1
+            # QuickSort
+            QuickSort.quicksort(seq, low, high)
+        if reverse:
+            seq.reverse()
+
+    @staticmethod
+    def quicksort(seq: MutableSequence[CT], low: int, high: int):
+        """
+        Recursive Lomuto "median-of-three" QuickSort implementation.
+        :param seq <MutableSequence<CT>>:   Sequence of ComparableType that have defined ordering.
+        :param low <int>:                   Index of lower bound of sorting scope.
+        :param high <int>:                  Index of upper bound of sorting scope.
+        """
+        # Continuation criteria.
+        if low >= 0 and high >= 0 and low < high:
+            # Partition.
+            lt, gt = QuickSort.partition(seq, low, high)
+            # Sort lower partition.
+            QuickSort.quicksort(seq, low, lt-1)
+            # Sort upper partition.
+            QuickSort.quicksort(seq, gt+1, high)
+
+    @staticmethod
+    def partition(seq: MutableSequence[CT], low: int, high: int):
+        """
+        Partition sequence into elements less or greater than a median-of-three pivot.
+        :param seq <MutableSequence<CT>>:   Sequence of ComparableType that have defined ordering.
+        :param low <int>:                   Index of lower bound of sorting scope.
+        :param high <int>:                  Index of upper bound of sorting scope.
+        """
+        # Compute median pivot and swap to mid.
+        mid = math.floor(low + (high - low) / 2)    # To avoid integer overflow from adding low and high.
+        QuickSort.centerMedian(seq, low, mid, high)
+        median = seq[mid]
+
+        # Swap the elements around the pivot.
+        lt = low    # Lowest upper bound of the lesser partition.
+        eq = low    # Lowest upper bound of the equivalent partition. Always lt <= eq.
+        gt = high   # Greatest lower bound of the greater partition.
+        while eq <= gt:
+            if seq[eq] < median:
+                # Swap to lesser partition.
+                QuickSort.swap(seq, eq, lt)
+                # Extend the lesser partition boundary.
+                lt += 1
+                # Extend the equiv partition boundary to
+                # account for the new addition into the
+                # lesser partition which increments the
+                # position of the equiv partition.
+                eq += 1
+            elif seq[eq] > median:
+                # Swap to greater partition.
+                QuickSort.swap(seq, eq, gt)
+                # Extend the greater partition boundary.
+                gt -= 1
+            else:   # seq[eq] == median
+                # Extend the equiv partition boundary.
+                eq += 1
+        # Return lowest upper bound and greatest lower bound of the unsorted sequence.
+        return lt, gt
+    
+    @staticmethod
+    def centerMedian(seq: MutableSequence[CT], low: int, mid: int, high: int):
+        """
+        Compute the median-of-three for low, mid and high in seq.
+        After sorting, the median is swapped into the mid spot.
+        :param seq <MutableSequence<CT>>:   Sequence of ComparableType that have defined ordering.
+        :param low <int>:                   Lowest element.
+        :param mid <int>:                   Median element.
+        :param high <int>:                  Highest element.
+        """
+        # Sort low, mid, and high in-place.
+        if seq[low] > seq[mid]:
+            # Swap low and mid.
+            QuickSort.swap(seq, low, mid)
+        if seq[mid] > seq[high]:
+            # Swap mid and high.
+            QuickSort.swap(seq, mid, high)
+        if seq[low] > seq[mid]:
+            # Swap low and mid (again).
+            QuickSort.swap(seq, low, mid)
+
+    @staticmethod
+    def swap(seq: MutableSequence[CT], left: int, right: int):
+        """
+        Swap the elements at index left and right in-place.
+        :param seq <MutableSequence<CT>>:   Sequence of ComparableType that have defined ordering.
+        :param left <int>:                  Index of left element.
+        :param right <int>:                 Index of right element.
+        """
+        # Swap left and right.
+        seq[right], seq[left] = seq[left], seq[right]
 
 class LinkedList:
     """
