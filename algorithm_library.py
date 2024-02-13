@@ -239,15 +239,16 @@ class LinkedList:
         # Iterate through the list, reversing each of the next pointers.
         nodeIter = self.head.next
         prevIter = None
+        nextIter = None
         while nodeIter is not None:
             # Save next node to iterate to.
-            tempNext = nodeIter.next
+            nextIter = nodeIter.next
             # Reverse direction of list.
             nodeIter.next = prevIter
             # Track current node as next previous node for reversal.
             prevIter = nodeIter
             # Iterate to next node.
-            nodeIter = tempNext
+            nodeIter = nextIter
         # Reset the HEAD node to point to the final previous node.
         self.head.next = prevIter
 

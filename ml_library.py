@@ -7,6 +7,17 @@ from torch.optim import AdamW
 from torch.utils.data import Dataset, DataLoader
 from typing import Union
 
+class GaussianMixture:
+    """
+    Unsupervisedly fits a mixture of Gaussian distributions onto a dataset via expectation maximization (EM).
+    """
+
+    def __init__(self):
+        """
+        Instantiate variables for EM.
+        """
+        return
+
 class MatrixFactorize(Module):
     """
     Matrix Factorization Model for Numerical Factorization and Recommender Systems
