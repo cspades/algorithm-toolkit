@@ -671,9 +671,20 @@ class WaterCapture:
     the cross-sectional area of the container.
 
     |~~~~~~~~~~~~~~         
-    | Water_Area=9 |
-    |    |         |    |
-    |____|____|____|____|____|
+    | Water Area=9 |
+    |    |         |
+    |____|____|____|____.____|
+
+    Alternatively, we can consider an alternative model where the walls
+    have volume that can take up space and the objective is to compute
+    the total volume of water captured by this structure:
+
+    X
+    X ~ ~ X
+    X X ~ X
+    X X X X ~ X
+
+    which can hold 4 units of water across the entire structure.
     """
 
     def __init__(self, height_vector):
@@ -686,36 +697,87 @@ class WaterCapture:
         # Store container information.
         self.bars = height_vector
 
-        # Instantiate search pointers.
-        self.L = 0
-        self.R = len(height_vector)-1
-        self.x_area = 0
-
     def water_volume(self):
         """
-        Compute the optimal volume of water captured by 
-        a container formed from the wall(s) / barrier(s).
+        Compute the optimal volume of water captured by a container formed from the wall(s) / barrier(s).
+
+        Intuitively, the minimum bar height of a container dictates the cross-sectional area, so searching
+        for a different bar on the side of the container with greater height only decreases the cross-sectional
+        area via decreasing the width of the tested container. By searching for a higher bar on the side with
+        lower height and testing for optimality, we can deduce the maximal container.
         """
+        # Instantiate search pointers.
+        l = 0
+        r = len(self.bars)-1
+        x_area = 0
 
         # Loop over all width(s) of all possible containers
         # from largest (len(self.bars) - 1) to smallest (1).
         for width in range(len(self.bars)-1, 0, -1):
 
-            # Implement a greedy search method. Minimum bar height
-            # of a container dictates the cross-sectional area,
-            # so searching for a different bar on the side of
-            # the container with greater height can only decrease
-            # the cross-sectional area via decreasing the width
-            # of the tested container.
-            if self.bars[self.L] < self.bars[self.R]:
+            # Greedy search for maximum volumne.
+            if self.bars[l] < self.bars[r]:
                 # Track cross-sectional area.
-                self.x_area = max(self.x_area, self.bars[self.L] * width)
+                x_area = max(x_area, self.bars[l] * width)
                 # Test different container.
-                self.L += 1
+                l += 1
             else:
                 # Track cross-sectional area.
-                self.x_area = max(self.x_area, self.bars[self.R] * width)
+                x_area = max(x_area, self.bars[r] * width)
                 # Test different container.
-                self.R -= 1
+                r -= 1
 
-        return self.x_area
+        return x_area
+    
+    def water_volume_alt(self):
+        """
+        Compute the total amount of water caught by landscape of blocks.
+        
+        Consider that the amount of water trapped at any vertical slice
+        of the structure can be computed as:
+
+        { min(Max Left Height, Max Right Height) - Current Height }
+
+        such that we can integrate from the left and right via dynamically
+        updating the minimum boundary height to evaluate the height of
+        the water that can be trapped within a slice.
+        """
+
+        # Iterators. Start internally as impossible to
+        # store water on edge of structure.
+        l = 1
+        r = len(self.bars)-2
+        
+        # Track maximum left and right height.
+        maxLeft = self.bars[0]
+        maxRight = self.bars[len(self.bars)-1]
+
+        # Integrate while width is non-zero.
+        volume = 0
+        while l <= r:
+            if maxLeft < maxRight:
+                # Compute water slice volume.
+                v = maxLeft - self.bars[l]
+                if v > 0:
+                    # Non-negative volume of trapped water.
+                    volume += v
+                # Update maxLeft.
+                if self.bars[l] > maxLeft:
+                    maxLeft = self.bars[l]
+                # Increment l.
+                l += 1
+            else:   # maxLeft >= maxRight
+                # Compute water slice volume.
+                v = maxRight - self.bars[r]
+                if v > 0:
+                    # Non-negative volume of trapped water.
+                    volume += v
+                # Update maxRight.
+                if self.bars[r] > maxRight:
+                    maxRight = self.bars[r]
+                # Increment r.
+                r -= 1
+        
+        # Return integrated volume.
+        return volume
+                

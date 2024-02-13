@@ -98,9 +98,10 @@ import time
 # print(ld.edit_distance())
 
 # print(f"Testing WaterCapture()...")
-# BARS = [ 4, 2, 1, 3, 2, 1 ]
+# BARS = [ 4, 2, 1, 3, 0, 1 ]
 # wc = WaterCapture(BARS)
 # print(wc.water_volume())
+# print(wc.water_volume_alt())
 
 
 """ Machine Learning Library Testing """
