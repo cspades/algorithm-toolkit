@@ -10,7 +10,217 @@ import random
 import numpy as np
 from abc import ABCMeta, abstractmethod
 from typing import Any, TypeVar
-from collections.abc import Callable, MutableSequence
+from collections.abc import Callable, MutableSequence, Hashable
+
+class HeapCache:
+    """
+    Implementation of an ordered cache / HeapCache, such that
+    the cache pops the min-order or max-order data when the cache
+    no longer has the capacity. When reverse=False, this implements
+    a min heap, and when reverse=True, this implements a max heap.
+    For example, HeapCache(reverse=False) where the order represents
+    timestamps implements a least-recently used cache (LRUCache).
+
+    Supports "static" use cases of internal methods if an external
+    cache and KV are provided.
+    """
+
+    class Data:
+        """
+        Generic Dataclass for HeapCache.
+        """
+        def __init__(self, key: Hashable, data, order, index=None):
+            self.key = key
+            self.data = data
+            self.order = order
+            self.index = index
+        def getKey(self):
+            return self.key
+        def getData(self):
+            return self.data
+        def setData(self, data):
+            self.data = data
+        def getOrder(self):
+            return self.order
+        def setOrder(self, order):
+            self.order = order
+        def getIndex(self):
+            return self.index
+        def setIndex(self, index):
+            self.index = index
+
+    def __init__(self, reverse=False, capacity=None):
+        """
+        Instantiate the KV store and Heap.
+        """
+        self.KV = {}
+        self.heapCache = []
+        self.reverse = reverse
+        self.capacity = capacity
+
+    def __repr__(self, rawHeap=True):
+        """
+        String representation of the heap.
+        """
+        if rawHeap:
+            # Print raw heap without sorting.
+            return str([f"({x.getKey()}, {x.getData()}, {x.getOrder()}, {x.getIndex()})" for x in self.heapCache])
+        else:
+            # HeapSort
+            return str([f"({data.getData()}, {data.getOrder()})" for data in self.heapsort()])
+
+    def heapsort(self, kv: dict = None):
+        """
+        Execute HeapSort.
+        """
+        # Custom KV associated with a HeapCache.
+        keyValue = self.KV if kv is None else kv
+        # Execute HeapSort.
+        cacheCopy = []
+        kvCopy = {}
+        # Clone the HeapCache.
+        for key, value in sorted(keyValue.items(), key=lambda x: x[1].getIndex(), reverse=False):
+            kvCopy[key] = self.Data(key, value.getData(), value.getOrder(), value.getIndex())
+            cacheCopy.append(kvCopy[key])
+        # Sort.
+        output = []
+        while cacheCopy:
+            output.append(self.popData(cache=cacheCopy, kv=kvCopy))
+        return output
+
+    def insertData(self, key: Hashable, value, order: int, cache: list = None, kv: dict = None):
+        """
+        Insert data into HeapCache. If an existing data with the
+        same key already exists, overwrite the data from the heap.
+
+        Furthermore, if the capacity of the HeapCache is specified
+        and is exceeded, pop an element from HeapCache.
+        """
+        # Custom cache and KV.
+        heapCache = self.heapCache if cache is None else cache
+        keyValue = self.KV if kv is None else kv
+        # Check if key exists in KV / Heap.
+        if key in keyValue:
+            # Overwrite.
+            keyValue[key].setData(value)
+            keyValue[key].setOrder(order)
+            # Re-heapify.
+            self.sift(keyValue[key].getIndex(), cache=heapCache)
+        else:
+            # Create new Data.
+            data = self.Data(key, value, order, index=len(heapCache))
+            # Insert into KV.
+            keyValue[key] = data
+            # Append to HeapCache.
+            heapCache.append(data)
+            # Sift up.
+            self.sift(data.getIndex(), cache=heapCache)
+            # Capacity checking.
+            if isinstance(self.capacity, int) and len(heapCache) > self.capacity:
+                overflow = len(heapCache) - self.capacity
+                for _ in range(overflow):
+                    # Pop element from heap.
+                    self.popData(cache=heapCache, kv=keyValue)
+
+    def popData(self, key: Hashable = None, cache: list = None, kv: dict = None):
+        """
+        Pop specified element and heapify. If no key is provided,
+        then pop the initial element of the heap.
+        """
+        # Custom cache and KV.
+        heapCache = self.heapCache if cache is None else cache
+        keyValue = self.KV if kv is None else kv
+        if not heapCache:
+            # Empty HeapCache. Return None.
+            return None
+        
+        # Pop specific key from HeapCache and KV.
+        targetIdx = 0
+        if key in keyValue:
+            # Search heap index by key.
+            targetIdx = keyValue[key].getIndex()
+            # Pop key from KV.
+            keyValue.pop(key)
+        elif key is None:
+            # Search key by heap index.
+            key = heapCache[targetIdx].getKey()
+            # Pop key from KV.
+            keyValue.pop(key)
+        else:
+            # Key is specified but does not exist. Do nothing.
+            return None
+
+        # Identify element at the specified index of the heap.
+        data = heapCache[targetIdx]
+        # Heapify (if there exists at least one child).
+        if len(heapCache)-1 > targetIdx:
+            # Swapping with the bottom of
+            # the heap preserves indices.
+            heapCache[targetIdx] = heapCache.pop()
+            heapCache[targetIdx].setIndex(targetIdx)
+            # Sift down if children exist.
+            self.sift(targetIdx, cache=heapCache)
+        else:
+            # Empty the first and only element from the heap.
+            heapCache.pop(targetIdx)
+        # Return data.
+        return data
+    
+    def heapify(self, cache: list = None):
+        """
+        Heapify the cache.
+        """
+        # Custom cache and KV.
+        heapCache = self.heapCache if cache is None else cache
+        # Heapify via iterative sift down.
+        for i in range(len(heapCache)-1, -1, -1):
+            # Sift down from the end of the heap.
+            self.sift(i, cache=heapCache)
+
+    def sift(self, siftIdx: int, cache: list = None):
+        """
+        Initiate a bi-directional sift operation optionally starting at siftIdx.
+        If the parent violates the heap, sift up. If a child violates the heap, sift down.
+        Update swapped indices along the way.
+        """
+        # Custom cache and KV.
+        heapCache = self.heapCache if cache is None else cache
+        # Sift down if children exist.
+        while siftIdx >= 0 and siftIdx < len(heapCache):
+            # Compute least- or most-recently used data in binary heap.
+            swapIdx = siftIdx
+            for adjIdx in [2*siftIdx+1, 2*siftIdx+2, math.floor((siftIdx - 1) / 2)]:
+                if adjIdx < 0 or adjIdx >= len(heapCache):
+                    # No children or no parent.
+                    continue
+                elif any([
+                    not self.reverse and any([
+                        # Parent has higher order than child, which requires sifting.
+                        adjIdx < swapIdx and heapCache[adjIdx].getOrder() > heapCache[swapIdx].getOrder(),
+                        # Child has lower order than parent, which requires sifting.
+                        adjIdx > swapIdx and heapCache[adjIdx].getOrder() < heapCache[swapIdx].getOrder()
+                    ]),
+                    self.reverse and any([
+                        # Parent has lower order than child, which requires sifting.
+                        adjIdx < swapIdx and heapCache[adjIdx].getOrder() < heapCache[swapIdx].getOrder(),
+                        # Child has higher order than parent, which requires sifting.
+                        adjIdx > swapIdx and heapCache[adjIdx].getOrder() > heapCache[swapIdx].getOrder()
+                    ])
+                ]):
+                    # Identify higher or lower order data.
+                    swapIdx = adjIdx
+            if swapIdx != siftIdx:
+                # Sift.
+                heapCache[swapIdx], heapCache[siftIdx] = heapCache[siftIdx], heapCache[swapIdx]
+                # Update indices for insertion and deletion at O(log(n)).
+                heapCache[swapIdx].setIndex(swapIdx)
+                heapCache[siftIdx].setIndex(siftIdx)
+                # Iterate in the direction of the sift. Will converge or break.
+                siftIdx = swapIdx
+            else:
+                # No swap necessary, so heap property is satisfied.
+                break
+
 
 class QuickSort:
     """
@@ -826,4 +1036,4 @@ class Numerics:
             subShuffle[randomChoice], subShuffle[-1] = subShuffle[-1], subShuffle[randomChoice]
         
         # Return shuffled list.
-        return subShuffle 
+        return subShuffle

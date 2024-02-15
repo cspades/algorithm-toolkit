@@ -4,6 +4,29 @@ import time
 
 """ Algorithm Library Testing """
 
+# print(f"Testing HeapCache...")
+# heap = HeapCache(reverse=False, capacity=4)
+# print(f"Empty Heap: ", heap)
+# heap.insertData("a", "a", 10)
+# heap.insertData("b", "b", 1)
+# heap.insertData("c", "c", 12)
+# heap.insertData("d", "d", 30)
+# heap.insertData("e", "e", -3)
+# print(f"Insertion + Overflow Test: ", heap)
+# heap.popData("c")
+# heap.popData("e")
+# print(f"Deletion Test: ", heap)
+# print(f"HeapSort Test: ", heap.__repr__(False))
+# testCache = [
+#     HeapCache.Data("a", "a", 10, 0),
+#     HeapCache.Data("b", "b", 1, 1),
+#     HeapCache.Data("c", "c", 12, 2),
+#     HeapCache.Data("d", "d", 30, 3),
+#     HeapCache.Data("e", "e", -3, 4)
+# ]
+# heap.heapify(cache=testCache)
+# print(f"Heapify Test: " + str([f"({x.getData()}, {x.getOrder()}, {x.getIndex()})" for x in testCache]))
+
 # print(f"Testing QuickSort...")
 # a = [12,1,-20,50,12,12,12,13481,3,-1324,5]
 # b = []
