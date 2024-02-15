@@ -994,26 +994,27 @@ class WaterCapture:
                 
 
 class Numerics:
-
-    @staticmethod
-    def rand5():
-        return round(random.random() * 5 - 0.5)
     
     @staticmethod
-    def rand7FromRand5():
+    def randNFromRandK(n: int, k: int):
         """
-        Encode combinations of {0,1,2,3,4} into possibilities for {0,1,2,3,4,5,6}.
-        Reject non-defined combinations and regenerate the combinations.
+        Generate a uniformly random integer from [n]
+        given a random sampling granularity of [k].
         """
-        # Execute rand5 multiple times and assign combinations to [0,6].
+        # Execute randInt(k) multiple times and assign combinations to [0,6].
         while True:
-            r1 = Numerics.rand5()
-            r2 = Numerics.rand5()
-            x = 5 * r1 + r2
-            # Delete non-defined combinations.
-            if x < 21:
-                # Return rand7.
-                return x % 7
+            # Sample k-nary coefficients from 0 to k-1.
+            subSample = []
+            for _ in range(n // k + 1):
+                subSample.append(random.randint(0,k-1))
+            # Decode the k-nary number from the k-nary representation.
+            p_k = sum([pow(k, i) * subSample[i] for i in range(len(subSample))])
+            # Delete non-defined combinations, i.e. numbers greater than
+            # the largest multiple of n less than the largest possible sample x.
+            x = sum([pow(k, i) * (k-1) for i in range(len(subSample))])
+            if p_k < x - x % n:
+                # Return randN.
+                return p_k % n
             
     @staticmethod
     def recursiveShuffle(n: int) -> list[int]:
