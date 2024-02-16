@@ -1049,3 +1049,53 @@ class Numerics:
                 # Swap. 
                 population[idx], population[j] = population[j], population[idx]
         return population[0:k]
+    
+    @staticmethod
+    def triangleAverage(l: list[float]):
+        """
+        Compute all moving averages of l.
+        """
+        avgList = []
+        m = 0
+        n = 0
+        for x in l:
+            # Compute moving average.
+            m = Numerics.movingAverage(x, m, n)
+            n += 1
+            avgList.append(m)
+        return avgList
+    
+    @staticmethod
+    def triangleVariance(l: list[float]):
+        """
+        Compute all moving variances of l.
+        """
+        varList = []
+        m = 0
+        v = 0
+        n = 0
+        for x in l:
+            # Compute moving variance.
+            v = Numerics.movingVariance(x, m, v, n)
+            # Compute moving average.
+            m = Numerics.movingAverage(x, m, n)
+            n += 1
+            varList.append(v)
+        return varList
+
+    @staticmethod
+    def movingAverage(x: float, m: float, n: int):
+        """
+        Provided a new element x and a moving average m of n elements,
+        compute the new average including x.
+        """
+        # Compute the moving average.
+        return (m * n + x) / (n + 1)
+    
+    @staticmethod
+    def movingVariance(x: float, m: float, v: float, n: int):
+        """
+        Provided a new element x, a moving average m, and moving
+        variance v of n elements, compute the new variance including x.
+        """
+        return v * n / (n+1) + pow(x-m, 2) * n / pow(n+1, 2)

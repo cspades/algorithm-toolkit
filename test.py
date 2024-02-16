@@ -141,6 +141,10 @@ import time
 # # Shuffle
 # print(Numerics.randomSample(N, N))
 
+# l = [1,2,3,4,5,6,7]
+# print(Numerics.triangleAverage(l))
+# print(Numerics.triangleVariance(l))
+
 """ Machine Learning Library Testing """
 
 # print(f"Testing MatrixFactorize()...")
