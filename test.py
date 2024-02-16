@@ -127,7 +127,7 @@ import time
 # print(wc.water_volume_alt())
 
 # print(f"Testing Numerics...")
-# N = 250
+# N = 100
 # K = 10
 # S = 100000
 # count = 0
@@ -136,7 +136,10 @@ import time
 #     if x == 0:
 #         count += 1
 # print(f"Expected Probability: {1 / N} | Experimental Ratio: {count / S}")
-# print(Numerics.recursiveShuffle(100))
+# # Sample
+# print(Numerics.randomSample(N, K))
+# # Shuffle
+# print(Numerics.randomSample(N, N))
 
 """ Machine Learning Library Testing """
 

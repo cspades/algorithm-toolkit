@@ -12,6 +12,12 @@ from abc import ABCMeta, abstractmethod
 from typing import Any, TypeVar
 from collections.abc import Callable, MutableSequence, Hashable
 
+class TrieTagger:
+    """
+    Trie-based entity tagger to tag all instances of a library
+    of string entities in a document string.
+    """
+
 class HeapCache:
     """
     Implementation of an ordered cache / HeapCache, such that
@@ -531,9 +537,9 @@ class TarjanSCC:
         """
 
         self.G = graph                  # Adjacency Matrix for Graph
-        self.dfs_stack = []             # DFS Stack
+        self.dfs = []                   # Depth-First Search Stack
         self.index = 0                  # Exploration Index
-        self.D = {
+        self.D = {                      # Node Data
             k: {
                 'index': None,          # Track exploration index.
                 'minlink': None,        # Track minimal sub-tree / reachable index.
@@ -577,11 +583,11 @@ class TarjanSCC:
         self.D[v]['index'] = self.index
         self.D[v]['minlink'] = self.index
         self.index += 1
-        self.dfs_stack.append(v)
+        self.dfs.append(v)
         self.D[v]['instack'] = True
         
         # Explore adjacent nodes.
-        for w in range(len(self.G)):
+        for w in range(len(self.G[v])):
             # Adjacent reachable nodes.
             if self.G[v][w] != 0:
                 # Unexplored node.
@@ -593,28 +599,24 @@ class TarjanSCC:
                         self.D[v]['minlink'],
                         self.D[w]['minlink']
                     )
-                # Explored node in the DFS stack.
+                # Explored node in the DFS stack. (Back-Edge Node)
                 elif self.D[w]['instack']:
                     # Update the minimum exploration index relative to
-                    # the back-edge node. Do NOT utilize the minimum 
+                    # the back-edge node index. Do NOT utilize the minimum 
                     # reachable exploration index of the back-edge node, 
                     # which considers minimum reachable exploration indices 
-                    # of the sub-tree of the back-edge node!
+                    # of the sub-trees of the back-edge node!
                     self.D[v]['minlink'] = min(
                         self.D[v]['minlink'],
                         self.D[w]['index']
                     )
-                # Explored nodes not in the DFS stack are pre-discovered SCC's.
-                else:
-                    # Neglect irrelevant nodes.
-                    continue
         
         # Output the SCC if the node is a minimal reachable node of the SCC.
         scc_detect = []
         if self.D[v]['minlink'] == self.D[v]['index']:
             # Include nodes in the sub-tree of the minimal reachable node.
-            while self.dfs_stack and self.D[self.dfs_stack[-1]]['index'] >= self.D[v]['index']:
-                w = self.dfs_stack.pop()
+            while self.dfs and self.D[self.dfs[-1]]['index'] >= self.D[v]['index']:
+                w = self.dfs.pop()
                 scc_detect.append(w)
                 self.D[w]['instack'] = False
 
@@ -1015,26 +1017,35 @@ class Numerics:
             if p_k < x - x % n:
                 # Return randN.
                 return p_k % n
-            
+    
     @staticmethod
-    def recursiveShuffle(n: int) -> list[int]:
+    def randomSample(n: int, k: int):
         """
-        Inductively generate a random permutation of n >>> 1.
-        Returns a list of integers spanning [n-1] = {0, ..., n-1}.
+        Uniformly randomly sample exactly k elements from [n] = {0, ..., n-1}.
+        When k = n, the algorithm randomly shuffles [n].
+
+        Algorithm iteratively builds on swaps to create permutations,
+        such that newly processed elements (i.e. at index j) swap positions
+        with pre-processed elements (i.e. with index in [0, j-1]) with
+        probability 1/j. Integrating these choices produces a permutation
+        probability of 1/n! when k = n, which is a random shuffle.
+
+        When k < n, we can project the space of permutations to the space of
+        combinations by dividing by k! for permutations of length k, which
+        differs from the number of combinations by a (n,k)-invariant constant
+        (n-k)!, which implies that deterministically choosing a subset of k
+        elements (such as the initial k elements in the permutation) represents
+        a uniform random sample when order is irrelevant.
         """
-        if n < 0:
-            # Empty list.
-            return []
-        else:
-            # Shuffle n-1 elements.
-            subShuffle = Numerics.recursiveShuffle(n-1)
-            # Append the new element.
-            subShuffle.append(n)
-            # Randomly swap the new element with a shuffled element.
-            # Note that the probability is uniform:
-            # 1/(n-1)! * 1/n = 1 / n!
-            randomChoice = random.randint(0, n)
-            subShuffle[randomChoice], subShuffle[-1] = subShuffle[-1], subShuffle[randomChoice]
-        
-        # Return shuffled list.
-        return subShuffle
+        # Instantiate the sample of k elements taken from the
+        # initial k elements of the complete population.
+        population = [i for i in range(0, n)]
+        # Iterate through the array, randomly sampling a number
+        # in [0, j-1] such that the element at that sampled index
+        # is replaced / swapped with the element at j.
+        for j in range(0, n):
+            idx = random.randint(0, j)
+            if idx < j:
+                # Swap. 
+                population[idx], population[j] = population[j], population[idx]
+        return population[0:k]
