@@ -7,16 +7,202 @@ import sys
 import heapq
 import math
 import random
-import numpy as np
-from abc import ABCMeta, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from typing import Any, TypeVar
 from collections.abc import Callable, MutableSequence, Hashable
 
 class TrieTagger:
     """
     Trie-based entity tagger to tag all instances of a library
-    of string entities in a document string.
+    of string entities in a provided document string.
     """
+
+    class TrieNode:
+        """
+        TrieNode that stores a token, matches that terminate at the token,
+        and links to further tokens in the Trie.
+        """
+        def __init__(self, token: str):
+            self.token = token
+            self.trieMatches = set()
+            self.trieNodes = {}
+        def getToken(self):
+            # Retrieve token represented by this TrieNode.
+            return self.token
+        def getTrieLeaves(self) -> set[str]:
+            # Retrieve all matches that terminate at self.token.
+            return self.trieMatches
+        def addTrieLeaf(self, matchEntity: str):
+            # Add match string terminates at self.token.
+            self.trieMatches.add(matchEntity)
+        def getTrieNode(self, token: str):
+            # For the token, return the child TrieNode.
+            # If not found, return None.
+            return self.trieNodes.get(token, None)
+        def addTrieNode(self, trieNode):
+            # Map token to child TrieNode for searching.
+            newToken = trieNode.getToken()
+            if newToken not in self.trieNodes:
+                self.trieNodes[newToken] = trieNode
+
+    class TrieEntity:
+        """
+        Wrapper class for tokenized and matched entities
+        via tokenization or searching the Trie.
+        """
+        def __init__(self, entity: str, startIdx: int, endIdx: int):
+            self.entity = entity
+            self.start = startIdx
+            self.end = endIdx
+        def __hash__(self):
+            # Compute hash for TrieMatch.
+            p = 31
+            hashData: list[Hashable] = [self.entity, self.start, self.end]
+            return sum([x.__hash__() * pow(p, i) for i, x in enumerate(hashData)])
+        def __repr__(self):
+            return f"{{Entity: {self.entity}, Start Index: {self.start}, End Index: {self.end}}}"
+        def getEntity(self) -> str:
+            return self.entity
+        def getStartIdx(self) -> int:
+            return self.start
+        def getEndIdx(self) -> int:
+            return self.end
+
+    class Tokenizer(ABC):
+        """
+        Abstract base class for Tokenizers.
+        """
+        @abstractmethod
+        def tokenize(self, doc: str):
+            """
+            Tokenize a string into a list of TrieEntity.
+            """
+
+    class CharTokenizer(Tokenizer):
+        """
+        Tokenizer that splits documents into characters.
+        Default Tokenizer if no other Tokenizer is specified.
+        """
+        @staticmethod
+        def tokenize(doc: str):
+            """
+            Tokenize document into non-empty characters.
+            """
+            return [TrieTagger.TrieEntity(c, i, i+1) for i, c in enumerate(doc)]
+
+    class WordTokenizer(Tokenizer):
+        """
+        Tokenizer that splits documents into words, i.e.
+        sequences of characters bounded by whitespace.
+        """
+        SPACE = " "
+        @classmethod
+        def tokenize(cls, doc: str):
+            """
+            Tokenize document into non-empty word strings.
+            """
+            tokenList = []
+            spaceSplit = doc.split(cls.SPACE)
+            posIdx = 0
+            for w in spaceSplit:
+                if w:
+                    # Append new TrieEntity.
+                    tokenList.append(TrieTagger.TrieEntity(w, posIdx, posIdx + len(w)))
+                    # Increment posIdx by len(w) + 1.
+                    posIdx += len(w) + 1
+                else:   # Skip empty strings.
+                    # Increment posIdx by 1 for a single whitespace.
+                    posIdx += 1
+            # Return tokenized document.
+            return tokenList
+
+    def __init__(self, entityList: list[str], tokenizer: Tokenizer = None):
+        """
+        Instantiate the TrieTagger.
+        """
+        # Setup tokenizer.
+        self.tokenizer: TrieTagger.Tokenizer = tokenizer
+        # Root of the Trie.
+        self.root: TrieTagger.TrieNode = TrieTagger.TrieNode("")
+        # Insert all matchStrings into the Trie.
+        self.insertEntity(entityList)
+
+    def tokenize(self, doc: str) -> list[str]:
+        """
+        Executes the configured tokenizer for the TrieTagger.
+        """
+        if self.tokenizer is not None:
+            # Utilize specified Tokenizer.
+            return self.tokenizer.tokenize(doc)
+        else:
+            # Default to Character Tokenizer.
+            return TrieTagger.CharTokenizer.tokenize(doc)
+        
+    def tag(self, document: str):
+        """
+        Tag and identify all entities detected in the document
+        that have been registered into the TrieTagger.
+        """
+        # Tokenize the document.
+        docTokens: list[TrieTagger.TrieEntity] = self.tokenize(document)
+        # Iterate through all starting tokens of the document.
+        trieMatches = []
+        for i in range(len(docTokens)):
+            # Search for TrieNodes in the Trie. Track position in document.
+            tokenIdx = 0
+            startIdx = docTokens[i].getStartIdx()
+            curNode = self.root
+            while i + tokenIdx < len(docTokens):
+                # Retrieve the token and TrieNode.
+                tokenEntity: TrieTagger.TrieEntity = docTokens[i+tokenIdx]
+                tokenNode: TrieTagger.TrieNode = curNode.getTrieNode(tokenEntity.getEntity())
+                # Terminate search if no more matched tokens.
+                if tokenNode is None:
+                    break
+                # Append terminal TrieMatch to the output list.
+                trieMatches.extend([
+                    TrieTagger.TrieEntity(e, startIdx, tokenEntity.getEndIdx())
+                    for e in tokenNode.getTrieLeaves()
+                ])
+                # Continue traversing the Trie.
+                curNode = tokenNode
+                # Increment token index.
+                tokenIdx += 1
+        # Return all matched entities in the Trie.
+        return trieMatches
+
+    def insertEntity(self, entityList: list[str]):
+        """
+        Insert all strings in entityList into the Trie.
+        """
+        # Insert all entities into the Trie.
+        for entity in entityList:
+            # Tokenize.
+            tokenEntityList = self.tokenize(entity)
+            # Sift through the Trie.
+            tokenIdx = 0
+            curNode = self.root
+            while tokenIdx < len(tokenEntityList):
+                # Retrieve the token and TrieNode.
+                tokenEntity: TrieTagger.TrieEntity = tokenEntityList[tokenIdx]
+                tokenNode = curNode.getTrieNode(tokenEntity.getEntity())
+                # Existing token.
+                if tokenNode is not None:
+                    # Continue traversing the Trie.
+                    curNode = tokenNode
+                else:   # New token!
+                    # Create new TrieNode.
+                    newNode = TrieTagger.TrieNode(tokenEntity.getEntity())
+                    # Map current TrieNode to new TrieNode.
+                    curNode.addTrieNode(newNode)
+                    # Continue traversing the Trie.
+                    curNode = newNode
+                # Move to next token to insert.
+                tokenIdx += 1
+            # Reached the end of the entity, add the entity
+            # as a TrieMatch in the terminal token's TrieNode.
+            curNode.addTrieLeaf(entity)
+
 
 class HeapCache:
     """

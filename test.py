@@ -4,6 +4,11 @@ import time
 
 """ Algorithm Library Testing """
 
+# print(f"Testing TrieTagger...")
+# tagList = ["hello", "world", "!"]
+# tagger = TrieTagger(tagList, tokenizer=TrieTagger.WordTokenizer)
+# print(tagger.tag("TESTING: hello world !"))
+
 # print(f"Testing HeapCache...")
 # heap = HeapCache(reverse=False, capacity=4)
 # print(f"Empty Heap: ", heap)
