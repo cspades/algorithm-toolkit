@@ -15,6 +15,14 @@ class TrieTagger:
     """
     Trie-based entity tagger to tag all instances of a library
     of string entities in a provided document string.
+
+    Suppose N is the token length of a document, M is the size of the
+    library of entities, and K is the token length of the longest
+    entity in the library. Then the insertion time complexity is O(MK)
+    from iteratively adding M entities with K length into the Trie,
+    and the matching time complexity is O(NK) from iteratively searching
+    for K length entities starting at each token in the document.
+    Combined, this takes O(MK + NK) time and up to O(MK) space.
     """
 
     class TrieNode:

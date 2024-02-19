@@ -4,19 +4,246 @@ import numpy as np
 import torch
 from torch.nn import *
 from torch.optim import AdamW
-from torch.utils.data import Dataset, DataLoader
 from typing import Union
 
 class GaussianMixture:
     """
-    Unsupervisedly fits a mixture of Gaussian distributions onto a dataset via expectation maximization (EM).
+    Unsupervisedly fits a mixture of Gaussian distributions onto a dataset
+    via the expectation maximization algorithm (EM).
+
+    For more information, refer to the derivation:
+    https://en.wikipedia.org/wiki/Expectation%E2%80%93maximization_algorithm#Gaussian_mixture
     """
 
-    def __init__(self):
+    def __init__(self, data: Union[torch.Tensor, np.ndarray], k: int, delta=1e-2, seed: int = None):
         """
         Instantiate variables for EM.
+        :param data <torch.Tensor|numpy.ndarray>:   Input (N,d) tensor / n-dimensional array of data to fit a GaussianMixture.
+        :param k <int>:                             Number of Gaussian distributions to fit to the data via EM.
+        :param delta <float>:                       Delta on the model parameters that terminates training.
+        :param seed <int>:                          Random seed to fix the initialization of the Gaussians.
         """
-        return
+        # Import data as torch.Tensor.
+        self.data = torch.Tensor(data)
+        self.N, self.D = self.data.shape
+        self.K = k
+
+        # Algorithm Parameters
+        self.delta = delta
+        self.modelDelta = float('inf')
+        self.eps = 1e-2
+        self.bound = self.data.max().item()
+        self.noise = 1e-5
+
+        # Fix random seed.
+        self.torch_gen = None
+        if seed is not None:
+            self.torch_gen = torch.manual_seed(seed)
+
+        # Initialize K-Means to randomly chosen points in self.data.
+        # Initializing means to existing datapoints drastically
+        # decreases non-convergence rate.
+        indexShuffle = torch.randperm(self.N)
+        self.mu = self.data[indexShuffle[:self.K]]
+
+        # Initialize K-Covariances. Must be positive-definite,
+        # so we compute the Gram matrix, i.e. A^T * A.
+        sigmaInit = torch.zeros(self.K, self.D, self.D)
+        init.xavier_uniform_(sigmaInit, gain=self.bound)
+        gram = torch.matmul(torch.transpose(sigmaInit, 1, 2), sigmaInit)
+        gramAbsSqrt = torch.sqrt(gram.abs())
+        self.sigma = gram.sign() * gramAbsSqrt
+
+        # Initialize class membership probabilities and class prior probabilities to 1/K.
+        self.classMemberProbs = torch.ones(self.N, self.K) / self.K
+        self.classPriorProbs = torch.ones(self.K) / self.K
+
+    def __repr__(self):
+        """
+        Print the mean and covariance matrices of all Gaussians.
+        """
+        # Avoid scientific notation.
+        np.set_printoptions(suppress=True)
+
+        outputRepr = "\n[> GaussianMixture Model Summary <]\n"
+        for j in range(self.K):
+            outputRepr += f"\n---------------------------------------\n"
+            outputRepr += f"\n{{Gaussian Distribution Class {j}}}\n"
+            outputRepr += f"\nMean:\n{self.mu[j].numpy().round(2)}\n"
+            outputRepr += f"\nCovariance:\n{self.sigma[j].numpy().round(2)}\n"
+            classMemberData = self.data[self.classMemberProbs.numpy().argmax(axis=1) == j]
+            outputRepr += f"\nTraining Class Members:\n{classMemberData.numpy().round(2)}\n"
+
+        # Reset notation.
+        np.set_printoptions(suppress=False)
+
+        # Print.
+        return outputRepr
+    
+    def fit(self):
+        """
+        Apply the expectation maximization unsupervised clustering algorithm (EM)
+        to optimize the mean and covariance of Gaussian distributions
+        such that the probability that all datapoints were sampled from
+        the mixture of Gaussian distributions is maximized.
+
+        Intuitively, alternate between updating the posterior distribution
+        (i.e. class membership probability) and optimizing the model parameters
+        (i.e. mean, covariance, priors) of each Gaussian distribution to converge
+        to an optimal model fit of the sample dataset.
+        """
+        # Track the absolute difference in model parameters.
+        prevMu = self.mu
+        prevSigma = self.sigma
+        prevPrior = self.classPriorProbs
+        while self.modelDelta > self.delta:
+            """
+            Expectation Step (E) - Compute the class membership
+            probabilities for each datapoint in our training dataset. 
+            """
+            # Compute class membership / sampling probabilities.
+            self.classMemberProbs = self.infer(self.data)
+            
+            """
+            Maximization Step (M) - Fit the mixture of Gaussian
+            distributions to the datapoints weighted by the
+            probability that the datapoint was sampled from
+            the distribution. Update the model delta.
+            """
+            # Derive class prior probabilities of shape (K).
+            self.classPriorProbs = self.classMemberProbs.mean(dim=0)
+
+            # Optimize expected / average class mean parameters.
+            # (K, D) = (K, N) x (N, D) / (K, 1)
+            self.mu = torch.div(
+                torch.matmul(torch.transpose(self.classMemberProbs, 0, 1), self.data),
+                self.classMemberProbs.sum(dim=0).view(self.K, 1)
+            )
+
+            # Optimize expected / average class covariance parameters.
+            data_reshaped = self.data.view(1, self.N, self.D, 1).expand(self.K, -1, -1, 1)
+            mu_reshaped = self.mu.view(self.K, 1, self.D, 1).expand(-1, self.N, -1, 1)
+            # Reshape to (K, N, D, 1) to compute covariance of shape (D, D) = (D, 1) x (1, D).
+            deviation = data_reshaped - mu_reshaped
+            # (K, N, D, D) = (K, N, D, 1) x (K, N, 1, D)
+            covariance = torch.matmul(deviation, torch.transpose(deviation, 2, 3))
+            # Compute expected / average covariance.
+            # (K, D, D) = [(K, N, D, D) * (K, N, 1, 1)].sum(N) / (K, 1, 1)
+            self.sigma = torch.div(
+                torch.mul(covariance, torch.transpose(self.classMemberProbs, 0, 1).view(self.K, self.N, 1, 1)).sum(dim=1),
+                self.classMemberProbs.sum(dim=0).view(self.K, 1, 1)
+            )
+
+            # Compute model delta.
+            self.modelDelta = sum([
+                # Gaussian Mean Convergence
+                torch.norm(self.mu - prevMu).item() / torch.norm(prevMu).item(),
+                # Gaussian Covariance Convergence
+                torch.norm(self.sigma - prevSigma).item() / torch.norm(prevSigma).item(),
+                # Distributional Convergence
+                torch.norm(self.classPriorProbs - prevPrior).item() / torch.norm(prevPrior).item()
+            ])
+            # Track previous model parameters.
+            prevMu = self.mu
+            prevSigma = self.sigma
+            prevPrior = self.classPriorProbs
+        
+        # Print training summary.
+        print(self)
+        print(f"Termination Delta: {self.modelDelta}")
+
+    def infer(self, x: Union[torch.Tensor, np.ndarray]):
+        """
+        Infer the class from which x was sampled, i.e. Expectation in Expectation-Maximization (EM).
+        Returns a Tensor of shape (M, K) containing class sampling / membership probabilities.
+        :param x <torch.Tensor|np.ndarray>:     Input tensor of shape (M, D).
+        """
+        # Compute relative class sampling probabilities for all classes.
+        # P[Data X is sampled from class J. | Class J is modeled by (Mu[j], Sigma[j]).] * P[Data has class J.]
+        # (M, K) = (M, K) * (K)
+        classSampleProbs = torch.mul(self.gaussianPdf(x, self.mu, self.sigma), self.classPriorProbs)
+
+        # Compute the cumulative sampling probability, i.e. P[Data X is sampled from Model.]
+        # (M, 1) = (M, K).sum(K), reshaped for right-to-left broadcasting compatibility with (M, K).
+        M = x.shape[0]
+        combSampleProb = classSampleProbs.sum(dim=1).view(M, 1)
+
+        # Divide relative class sampling probability by cumulative sampling probability
+        # to derive a class membership conditional probability, i.e.
+        # P[Data X is sampled from class J. | Data X is sampled from Model.] =
+        # P[Data X is sampled from class J. | Class J is modeled by (Mu[j], Sigma[j]).] * P[Data X has class J.] / P[Data X is sampled from Model.]
+        # (M, K) = (M, K) / (M, 1)
+        return torch.div(classSampleProbs, combSampleProb)
+
+    def gaussianPdf(self, x: Union[torch.Tensor, np.ndarray], mu: Union[torch.Tensor, np.ndarray], sigma: Union[torch.Tensor, np.ndarray]):
+        """
+        Compute the probability density function for the multivariate Gaussian distribution.
+        Utilized relatively to estimate the posterior probability given that a datapoint x is
+        sampled from the Gaussian distribution of mean mu and covariance sigma.
+        :param x <torch.Tensor|np.ndarray>:         Input tensor of shape (M, D).
+        :param mu <torch.Tensor|np.ndarray>:        Mean tensor of shape (K, D).
+        :param sigma <torch.Tensor|np.ndarray>:     Covariance tensor of shape (K, D, D).
+        :return <torch.Tensor|np.ndarray>:          Probability matrix of shape (M, K) for each sample M and each distribution K.
+        """
+        # Compute probability density function for the Gaussian.
+        return torch.div(
+            # (M, K)
+            self._perturbedClamp(torch.exp(-0.5 * self.mahalanobisDistance(x, mu, sigma)), min=self.eps, max=self.bound, noise=self.noise),
+            # (1, K)
+            self._perturbedClamp(torch.sqrt(pow(2 * math.pi, self.D) * torch.det(sigma).view(1, self.K)), min=self.eps, max=self.bound, noise=self.noise)
+        )
+    
+    def mahalanobisDistance(self, x: Union[torch.Tensor, np.ndarray], mu: Union[torch.Tensor, np.ndarray], sigma: Union[torch.Tensor, np.ndarray]):
+        """
+        Compute the (squared) Mahalanobis distance from the datapoint X to the distribution parametrized by (Mu, Sigma).
+        :param x <torch.Tensor|np.ndarray>:         Input tensor of shape (M, D).
+        :param mu <torch.Tensor|np.ndarray>:        Mean tensor of shape (K, D).
+        :param sigma <torch.Tensor|np.ndarray>:     Covariance tensor of shape (K, D, D).
+        :return <torch.Tensor|np.ndarray>:          Distance matrix of shape (M, K) for each sample M and each distribution K.
+        """
+        # Reshape both x and mu to (M, K, D, 1). Reshape sigma to (M, K, D, D).
+        M = x.shape[0]
+        x_reshaped = x.view(M, 1, self.D, 1).expand(-1, self.K, -1, 1)
+        mu_reshaped = mu.view(1, self.K, self.D, 1).expand(M, -1, -1, 1)
+        sigma_reshaped = sigma.view(1, self.K, self.D, self.D).expand(M, -1, -1, -1)
+        # Compute x - mu.
+        deviation = x_reshaped - mu_reshaped
+        # Compute the squared Mahalanobis distance.
+        # (M, K, 1, 1) = (M, K, 1, D) x (M, K, D, D) x (M, K, D, 1)
+        mahalanobis = torch.matmul(
+            torch.transpose(deviation, 2, 3),
+            torch.matmul(torch.linalg.inv(sigma_reshaped), deviation)
+        )
+        # Reshape to (M, K).
+        return mahalanobis.view(M, self.K)
+    
+    def _perturbedClamp(self, tensor: Union[torch.Tensor, np.ndarray], min: float = None, max: float = None, noise: float = None):
+        """
+        Bound the magnitude / absolute value of tensor to [min, max] to prevent numerical instability.
+        Inject random noise of magnitude noise to prevent tensor singularity, i.e. to avoid having
+        linearly dependent row or column vectors in the Tensor.
+
+        TODO: Identify optimal solutions for numerical instability for Gaussian EM.
+        """
+        # Identify the sign of the tensor.
+        tsign = tensor.sign()
+        # Compute the clamped absolute value of the tensor.
+        tabs = tensor.abs().clamp(min=min, max=max)
+        # Inject noise.
+        perturb = torch.zeros(*tensor.shape)
+        if noise is not None:
+            # Warning: Noise <<< min in magnitude to insure numerical accuracy.
+            perturb = 2 * noise * (torch.rand(*tensor.shape, generator=self.torch_gen) - 0.5)
+            pMask = torch.zeros(*perturb.shape, dtype=torch.bool)
+            # Identify zeros, clamped minimums, and clamped maximums.
+            pMask = torch.logical_or(pMask, torch.eq(tsign, 0.0))
+            if min is not None:
+                pMask = torch.logical_or(pMask, torch.eq(tabs, min))
+            if max is not None:
+                pMask = torch.logical_or(pMask, torch.eq(tabs, max))
+            perturb *= pMask
+        # Return the magnitude-clamped noisy tensor.
+        return tabs * tsign + perturb
 
 class MatrixFactorize(Module):
     """
