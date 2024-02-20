@@ -152,7 +152,40 @@ import time
 
 """ Machine Learning Library Testing """
 
-# print(f"Testing MatrixFactorize()...")
+# print(f"Testing GaussianMixture...")
+# SEED = 4
+# SHAPE = (10, 2)
+# rng = np.random.default_rng(SEED)
+# NORM = 1
+# D = 2 * NORM * (rng.random(SHAPE) - 0.5)
+# K = 3
+
+# GMM = GaussianMixture(data=D, k=K, seed=SEED)
+# GMM.fit()
+
+# # Battle-Testing
+# sims = [0, 500]
+# count = 0
+# seedset = set()
+# SHAPE = (10, 2)
+# NORM = 1
+# K = 3
+# for seed in range(*sims):
+#     # Generate data.
+#     rng = np.random.default_rng(seed)
+#     D = 2 * NORM * (rng.random(SHAPE) - 0.5)
+#     # Fit data.
+#     GMM = GaussianMixture(data=D, k=K, seed=seed)
+#     GMM.fit()
+#     # Analyze results.
+#     if math.isnan(GMM.modelDelta):
+#         seedset.add(seed)
+#     else:
+#         count += 1
+# print(f"Numerical Convergence Ratio: {count / (sims[1] - sims[0])}")
+# print(f"Broken Seeds: {seedset}")
+
+# print(f"Testing MatrixFactorize...")
 # SEED = 0
 # SHAPE = (5,9)
 # rng = np.random.default_rng(SEED)
@@ -168,7 +201,7 @@ import time
 # m.fit()
 # print(m)
 
-# print(f"Testing FactorizationMachine()...")
+# print(f"Testing FactorizationMachine...")
 # SEED = 0
 # N = 1000
 # X = 10
