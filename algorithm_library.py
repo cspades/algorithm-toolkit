@@ -4,12 +4,14 @@ Implemented by Cory Ye
 For personal educational review.
 """
 import sys
-import heapq
 import math
 import random
+import heapq
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Any, TypeVar
 from collections.abc import Callable, MutableSequence, Hashable
+from enum import Enum
+import numpy as np
+from typing import Any, TypeVar, Union, Iterable
 
 class TrieTagger:
     """
@@ -891,9 +893,109 @@ class DijkstraBFS:
 
         # Output distance(s) and path(s) in the graph G.
         return self.dist, self.path
+    
 
+class DisjointEnsemble:
+    """
+    Implementation of a DisjointEnsemble data structure that
+    specifically supports efficient union of disjoint sets
+    stored within the ensemble of sets.
+    """
+    class TreeNode:
+        def __init__(self, data: Hashable, parent: int = None, children: list = None, rank: int = 0):
+            self.data = data
+            self.parent = parent
+            self.children = [] if children is None else children
+            self.rank = rank
+        def __eq__(self, x):
+            # Equate on element ID.
+            return self.data == x.data
+        
+    def __init__(self, space: Iterable[Hashable]):
+        # Initialize TreeNode for all elements in the space.
+        self.treeCache = {
+            x: DisjointEnsemble.TreeNode(x) for x in space
+        }
+        
+    def findTreeRoot(self, node: Hashable):
+        """
+        Search for the root of the spanning tree containing node.
+        """
+        # Lookup the TreeNode.
+        treeNode = self.treeCache.get(node, None)
+        if treeNode is None:
+            # Empty tree. Return None.
+            return DisjointEnsemble.TreeNode(None)
+        
+        # Search for the root.
+        root = treeNode
+        while root.parent is not None:
+            # Iterate to the parent.
+            root = root.parent
 
-class KruscalMST:
+        # Update parent pointers to root for lookup to O(1).
+        nodeIter = treeNode
+        while nodeIter.parent is not None:
+            # Flatten the search tree.
+            tempParent = nodeIter.parent
+            nodeIter.parent = root
+            root.children.append(nodeIter)
+            nodeIter = tempParent
+        
+        # Return the root node for spanning tree comparison.
+        return root
+
+    def treeUnion(self, a: Hashable, b: Hashable):
+        """
+        Unify the spanning trees containing nodes A and B.
+        """
+        # Search for the roots of A and B.
+        rootA = self.findTreeRoot(a)
+        rootB = self.findTreeRoot(b)
+        if rootA == rootB:
+            # Same spanning tree. No union required.
+            return
+
+        # Compare or update the rank of the roots.
+        if rootB.rank > rootA.rank:
+            # Swap to set new root as B.
+            rootA, rootB = rootB, rootA
+        elif rootA.rank == rootB.rank:
+            # Update rank to rootB.rank + 1.
+            rootA.rank += 1
+
+        # Unify the spanning trees.
+        rootB.parent = rootA
+        rootA.children.append(rootB)
+        return
+    
+    def getSet(self, node: Hashable):
+        """
+        Retrieve the disjoint set associated with node.
+        """
+        # Find the root.
+        root = self.findTreeRoot(node)
+        if root is None:
+            return set()
+        
+        # Depth-First Tree Search
+        stack = [root]
+        output = set()
+        while stack:
+            # Pop the stack.
+            node = stack.pop()
+            # Add node content to output set.
+            output.add(node.data)
+            # Append children to stack.
+            stack.extend(node.children)
+        return output
+
+class KruskalMST:
+    """
+    Implementation of Kruskal's Minimal Spanning Tree Algorithm.
+    Utilizes DisjointEnsemble to iteratively unify multiple
+    trees to construct a minimal (or maximal) spanning tree.
+    """
 
     def __init__(self, graph, maximal=False):
         """
@@ -906,17 +1008,17 @@ class KruscalMST:
         # Instantiate graph and sort edge weights.
         self.G = graph
         self.E = []
+        # Insert weighted edge into priority heap / queue.
         for i in range(len(graph)):
             for j in range(len(graph)):
-                # Insert weighted edge into priority heap / queue.
                 if graph[i][j] != 0:    # Non-existent edge.
                     heapq.heappush(
                         self.E,
                         (graph[i][j], (i,j)) if not maximal else (-graph[i][j], (i,j))
                     )
-        self.setcache = {
-            x: set([x]) for x in range(len(graph))
-        }
+        # Register nodes as TreeNode for root-searching.
+        self.disjointTrees = DisjointEnsemble(range(len(self.G)))
+        # Control minimal or maximal spanning tree algorithm.
         self.maximal = maximal
 
     def mst(self):
@@ -928,20 +1030,18 @@ class KruscalMST:
         # Build minimal spanning tree.
         tree = []
         score = 0
-        while len(tree) < len(self.G):
+        while self.E:
 
             # Pop the minimal edge.
             w, e = heapq.heappop(self.E)
 
-            # Combine sets of edges if the sets associated
-            # to each vertex of edge e are not from the same
-            # tree, preventing cycles from being created.
-            if self.setcache[e[0]] != self.setcache[e[1]]:
+            # Combine sets of edges if the trees associated
+            # to each vertex of edge e are not equivalent,
+            # preventing cycles from being created.
+            if self.disjointTrees.findTreeRoot(e[0]) != self.disjointTrees.findTreeRoot(e[1]):
 
                 # Union the trees to create a larger spanning tree.
-                u = self.setcache[e[0]] | self.setcache[e[1]]
-                self.setcache[e[0]] = u
-                self.setcache[e[1]] = u
+                self.disjointTrees.treeUnion(e[0], e[1])
 
                 # Append edge to MST.
                 tree.append(e)
@@ -951,7 +1051,6 @@ class KruscalMST:
                     score -= w
 
         return tree, score
-
 
 class KnapSack:
 
@@ -1293,3 +1392,224 @@ class Numerics:
         variance v of n elements, compute the new variance including x.
         """
         return v * n / (n+1) + pow(x-m, 2) * n / pow(n+1, 2)
+    
+class MazeSolver:
+    """
+    Maze-solving algorithm implementation via FloodFill with basic GUI.
+    Given a maze and initial position, simulates the iterations of the
+    FloodFill algorithm, and provides tools to generate random mazes.
+
+    To setup the maze, form a 2-D array of unsigned integers
+    such that the binary representation of the coordinate describes
+    the structure of the maze at that position, where redundant
+    placements are deduplicated with OR logic:
+
+        0001 = 1 = North Wall (Up)
+        0010 = 2 = South Wall (Down)
+        0100 = 4 = West Wall (Left)
+        1000 = 8 = East Wall (Right)
+
+    For instance, the sequence of numbers (11, 7, 10) will represent the
+    following adjacent maze cells in the (y,x)-coordinate system:
+
+    . ------> x
+    | --- ---
+    | 11 | 7  10 |
+    v --- --- ---
+    y
+    """
+
+    # Directional Encoding Dictionary
+    bitDirection = {
+        "u": 1, # Up
+        "d": 2, # Down
+        "l": 4, # Left
+        "r": 8, # Right
+        "o": 0, # Open (None)
+        "c": 15 # Closed (All)
+    }
+
+    class MazeObject:
+        """
+        Constant class attributes describing maze objects
+        and mouse orientations along with their unique
+        visual representation in the GUI.
+        """
+        V_WALL = "!"
+        V_WALL_OBS = "|"
+        V_OPEN = " "
+        H_WALL = "---"
+        H_WALL_OBS = "==="
+        H_OPEN = "   "
+        UP = " ^ "
+        LEFT = " < "
+        RIGHT = " > "
+        DOWN = " v "
+
+    class Coordinate:
+        def __init__(self, y: int, x: int, o: str = None):
+            self.y = y
+            self.x = x
+            self.o = o
+
+    def __init__(self, maze: np.ndarray, mouse: tuple[int, int] = (0,0)):
+        """
+        Initialize the maze from a NumPy array encoding of the maze.
+        """
+        # Validate input parameters.
+        if any([
+            maze.shape[0] < 1,
+            maze.shape[1] < 1,
+            mouse[0] < 0,
+            mouse[0] >= maze.shape[0],
+            mouse[1] < 0,
+            mouse[1] >= maze.shape[1],
+        ]):
+            raise ValueError(
+                f"[MazeSolver] Maze dimensions should be positive, and the mouse initial position must be located in the maze.\n" +
+                f"Maze Dimensions: ({maze.shape[0]}, {maze.shape[1]})\n" +
+                f"Mouse Coordinates: ({mouse[0]}, {mouse[1]})"
+            )
+        # Initialize maze variables.
+        self.mouse = self.Coordinate(mouse[0], mouse[1], self.MazeObject.DOWN)
+        self.Y, self.X = maze.shape[0], maze.shape[1]
+        self.maze = maze.astype(int)
+        self.observedMaze = np.zeros(maze.shape, dtype=int)
+
+    def __repr__(self):
+        return self._drawMaze(self.maze, self.observedMaze, self.mouse)
+    
+    @classmethod
+    def _checkWall(cls, y: int, x: int, maze: np.ndarray, dir: str = "c"):
+        return bool(maze[y,x] & cls.bitDirection.get(dir, 15))
+    
+    @classmethod
+    def _addWall(cls, y: int, x: int, maze: np.ndarray, dir: str = "o"):
+        maze[y,x] |= cls.bitDirection.get(dir, 0)
+
+    @classmethod
+    def _deleteWall(cls, y: int, x: int, maze: np.ndarray, dir: str = "o"):
+        maze[y,x] &= ~cls.bitDirection.get(dir, 0)
+
+    @staticmethod
+    def _maze_2d_to_2d(y: int, x: int):
+        return 2*y+1, 2*x+1
+    
+    @staticmethod
+    def _drawMaze(maze: np.ndarray, observedMaze: np.ndarray = None, mouse = None):
+        """
+        Utilizing the input and observed mazes, expand the coordinate
+        system to (2X-1,2Y-1) to draw the current state of the maze.
+        Observed and non-observed objects are depicted differently,
+        e.g. an observed horizontal wall appears as '===' but an
+        unobserved horizontal wall appears as '---'.
+        """
+        # Maze Parameters
+        Y, X = maze.shape[0], maze.shape[1]
+        # Visualize maze as 2-D ndarray of String.
+        WALL_GAP = " "
+        CELL_SPACE = " " * 3
+        graphicMaze = np.full(((2*Y+1), (2*X+1)), '?', dtype="U3")
+        for y in range(Y):
+            for x in range(X):
+                # Map to raw maze coordinates.
+                j, i = MazeSolver._maze_2d_to_2d(y, x)
+                """
+                Maze Cells
+                """
+                if mouse is not None and mouse.y == y and mouse.x == x:
+                    # Set mouse.
+                    graphicMaze[j,i] = mouse.o
+                else:
+                    # Empty cell.
+                    graphicMaze[j,i] = CELL_SPACE
+                """
+                Maze Walls
+                """
+                if MazeSolver._checkWall(y,x,maze,"u"):
+                    # North Wall
+                    northWall = MazeSolver.MazeObject.H_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"u") else MazeSolver.MazeObject.H_WALL
+                    graphicMaze[j-1,i] = northWall
+                elif graphicMaze[j-1,i]== "?":
+                    graphicMaze[j-1,i] = MazeSolver.MazeObject.H_OPEN
+                if MazeSolver._checkWall(y,x,maze,"d"):
+                    # South Wall
+                    southWall = MazeSolver.MazeObject.H_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"d") else MazeSolver.MazeObject.H_WALL
+                    graphicMaze[j+1,i] = southWall
+                elif graphicMaze[j+1,i] == "?":
+                    graphicMaze[j+1,i] = MazeSolver.MazeObject.H_OPEN
+                if MazeSolver._checkWall(y,x,maze,"l"):
+                    # West Wall
+                    westWall = MazeSolver.MazeObject.V_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"l") else MazeSolver.MazeObject.V_WALL
+                    graphicMaze[j,i-1] = westWall
+                elif graphicMaze[j,i-1] == "?":
+                    graphicMaze[j,i-1] = MazeSolver.MazeObject.V_OPEN
+                if MazeSolver._checkWall(y,x,maze,"r"):
+                    # East Wall
+                    eastWall = MazeSolver.MazeObject.V_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"r") else MazeSolver.MazeObject.V_WALL
+                    graphicMaze[j,i+1] = eastWall
+                elif graphicMaze[j,i+1] == "?":
+                    graphicMaze[j,i+1] = MazeSolver.MazeObject.V_OPEN
+                    
+        # Print maze.
+        outputMaze = ""
+        for j in range(2*Y+1):
+            for i in range(2*X+1):
+                # Fill in wall gaps.
+                if j % 2 == 0 and i % 2 == 0:
+                    graphicMaze[j,i] = WALL_GAP
+                # Append to graphic.
+                outputMaze += graphicMaze[j,i]
+            outputMaze += "\n"
+        return outputMaze
+    
+    @staticmethod
+    def generateMaze(length: int, width: int, seed: int = None):
+        """
+        Generate a random bounded maze using Kruskal's Algorithm.
+        """
+        # Initialize maze.
+        randomMaze = np.full((length, width), 15)
+        # Randomly grow a set of maze coordinates
+        # that are connected via destroying walls.
+        rng = np.random.default_rng(seed)
+        disjointCells = DisjointEnsemble((j,i) for j in range(length) for i in range(width))
+        # Merge operations dictionary for adjacent coordinates.
+        mergeOps = {
+            (0,1): ("r","l"),
+            (0,-1): ("l","r"),
+            (1,0): ("d","u"),
+            (-1,0): ("u","d")
+        }
+        while True:
+            # Unpack a random starting point.
+            j, i = rng.integers(low=0, high=length), rng.integers(low=0, high=width)
+            # Randomly choose a neighbor not in the SCC
+            # of the coordinate and within bounds.
+            adjCoordinates = [
+                x for x in [(j,i+1), (j,i-1), (j+1,i), (j-1,i)]
+                if all([
+                    x[0] >= 0 and x[0] < length and x[1] >= 0 and x[1] < width,
+                    disjointCells.findTreeRoot(x) != disjointCells.findTreeRoot((j,i))
+                ])
+            ]
+            rng.shuffle(adjCoordinates)
+            if not adjCoordinates:
+                # No candidates for connection. Randomly choose another coordinate.
+                continue
+            else:
+                # Connect with adjacent cell.
+                adjCell = adjCoordinates[0]
+                # Compute differential.
+                delta = tuple(np.subtract(adjCell, (j,i)))
+                # Destroy both walls.
+                MazeSolver._deleteWall(j, i, randomMaze, mergeOps[delta][0])
+                MazeSolver._deleteWall(adjCell[0], adjCell[1], randomMaze, mergeOps[delta][1])
+                # Merge their sets.
+                disjointCells.treeUnion((j,i), adjCell)
+                union = disjointCells.getSet((j,i))
+                if len(union) == length * width:
+                    # Connected maze. Terminate.
+                    break
+        # Return randomized maze and mouse.
+        return randomMaze, (rng.integers(low=0, high=length), rng.integers(low=0, high=width))

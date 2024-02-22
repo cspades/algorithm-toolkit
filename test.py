@@ -110,7 +110,7 @@ import time
 #     [1, -1, 1, 0, 0],
 #     [7, 0.5, -2, -4, 0],
 # ]
-# d = KruscalMST(G, maximal=True)
+# d = KruskalMST(G, maximal=True)
 # tree, score = d.mst()
 # print(tree)
 # print(score)
@@ -149,6 +149,11 @@ import time
 # l = [1,2,3,4,5,6,7]
 # print(Numerics.triangleAverage(l))
 # print(Numerics.triangleVariance(l))
+
+# print(f"Testing MazeSolver...")
+# inputMaze, mouse = MazeSolver.generateMaze(6,12)
+# mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
+# print(mazeSolver)
 
 """ Machine Learning Library Testing """
 
