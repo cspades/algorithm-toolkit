@@ -150,11 +150,6 @@ import time
 # print(Numerics.triangleAverage(l))
 # print(Numerics.triangleVariance(l))
 
-print(f"Testing MazeSolver...")
-inputMaze, mouse = MazeSolver.generateMaze(6,12)
-mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
-mazeSolver.solve((3, 9), sim=False, history=True)
-
 """ Machine Learning Library Testing """
 
 # print(f"Testing GaussianMixture...")
