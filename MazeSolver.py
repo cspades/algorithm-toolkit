@@ -82,12 +82,20 @@ class MazeSolver:
         "c": 15 # Closed (All)
     }
 
-    # Merge operations dictionary for adjacent coordinates.
+    # Map from coordinate delta to relative directions.
     deltaDir = {
         (0,1): {"cur": "r", "adj": "l"},
         (0,-1): {"cur": "l", "adj": "r"},
         (1,0): {"cur": "d", "adj": "u"},
         (-1,0): {"cur": "u", "adj": "d"}
+    }
+
+    # Map from direction to coordinate delta.
+    dirDelta = {
+        "u": (-1,0),
+        "d": (1,0),
+        "l": (0,-1),
+        "r": (0,1)
     }
 
     def __init__(self, maze: np.ndarray, mouse: tuple[int, int] = (0,0)):
@@ -184,7 +192,7 @@ class MazeSolver:
                 
             # Compute optimal direction to solve the maze.
             minDist = float('inf')
-            minDelta = None
+            minDelta = set()
             for delta, wallDirs in self.deltaDir.items():
                 # Validate direction.
                 adjCell = self._applyDelta(self.mouse.getPos(), delta)
@@ -194,20 +202,29 @@ class MazeSolver:
                 # Identify the shortest path to destination.
                 adjDist = self._posLookup(self.floodFillMatrix, adjCell)
                 if not self._checkWall(self.mouse.getPos(), self.observedMaze, wallDirs["cur"]) \
-                    and adjDist < min(self._posLookup(self.floodFillMatrix, self.mouse.getPos()), minDist):
+                    and adjDist <= min(self._posLookup(self.floodFillMatrix, self.mouse.getPos()), minDist):
                     # Update minimum and direction cell.
                     minDist = adjDist
-                    minDelta = delta
-            if minDelta is None:
+                    minDelta.add(delta)
+            if not minDelta:
                 # No viable direction. Terminate.
                 print(f"Maze is unsolvable! Terminating...")
                 break
 
+            # If multiple directions are viable, prioritize moving in the direction of the destination.
+            # To sort in order of most aligned to least aligned directions, compute the inner product.
+            destDelta = self._computeDelta(dest, self.mouse.getPos())
+            bestDelta = sorted(
+                [(int(np.inner(delta, destDelta)), delta) for delta in self.deltaDir if delta in minDelta],
+                key=lambda x : x[0],
+                reverse=True
+            )[0][1]
+
             # Move mouse. If not facing in direction of movement, change direction.
-            mvCell = self._applyDelta(self.mouse.getPos(), minDelta)
-            if self.mouse.getDir() != self.deltaDir[minDelta]["cur"]:
+            mvCell = self._applyDelta(self.mouse.getPos(), bestDelta)
+            if self.mouse.getDir() != self.deltaDir[bestDelta]["cur"]:
                 # Change direction.
-                self.mouse.setDir(self.deltaDir[minDelta]["cur"])
+                self.mouse.setDir(self.deltaDir[bestDelta]["cur"])
             else:
                 # Move in optimal direction.
                 self.mouse.setPos(mvCell)
@@ -424,6 +441,6 @@ inputMaze, mouse = MazeSolver.generateMaze(8,40)
 # Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
 # Path Planning
-mazeSolver.solve((7, 39), sim=0.1, history=False)
-mazeSolver.solve((0, 0), sim=0.1, history=False)
-mazeSolver.solve((4, 20), sim=0.1, history=False)
+mazeSolver.solve((0, 0), sim=0.05, history=False)
+mazeSolver.solve((7, 39), sim=0.05, history=False)
+mazeSolver.solve((4, 20), sim=0.05, history=False)
