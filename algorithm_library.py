@@ -3,13 +3,14 @@ Algorithm Library (Python v3.9.6+)
 Implemented by Cory Ye
 For personal educational review.
 """
-import sys
-import math
-import random
 import heapq
+import math
+import os
+import random
+import sys
+import time
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Callable, MutableSequence, Hashable
-from enum import Enum
 import numpy as np
 from typing import Any, TypeVar, Union, Iterable
 
@@ -1418,16 +1419,26 @@ class MazeSolver:
     v --- --- ---
     y
     """
+    class Coordinate:
+        def __init__(self, pos: tuple[int, int] = (0,0), dir: str = None):
+            self.y = pos[0]
+            self.x = pos[1]
+            self.dir = dir
+        def getPos(self):
+            return (self.y, self.x)
+        def setPos(self, pos: tuple[int, int]):
+            self.y = pos[0]
+            self.x = pos[1]
+        def getDir(self):
+            return self.dir
+        def setDir(self, dir: str):
+            self.dir = dir
 
-    # Directional Encoding Dictionary
-    bitDirection = {
-        "u": 1, # Up
-        "d": 2, # Down
-        "l": 4, # Left
-        "r": 8, # Right
-        "o": 0, # Open (None)
-        "c": 15 # Closed (All)
-    }
+    class Direction:
+        UP = "u"
+        DOWN = "d"
+        LEFT = "l"
+        RIGHT = "r"
 
     class MazeObject:
         """
@@ -1441,16 +1452,34 @@ class MazeSolver:
         H_WALL = "---"
         H_WALL_OBS = "==="
         H_OPEN = "   "
-        UP = " ^ "
-        LEFT = " < "
-        RIGHT = " > "
-        DOWN = " v "
+        MOUSE_UP = " ^ "
+        MOUSE_LEFT = " < "
+        MOUSE_RIGHT = " > "
+        MOUSE_DOWN = " v "
+        MOUSE_ORIENT = {
+            "u": MOUSE_UP,
+            "d": MOUSE_DOWN,
+            "l": MOUSE_LEFT,
+            "r": MOUSE_RIGHT
+        }
+    
+    # Directional Encoding Dictionary
+    bitDirection = {
+        "u": 1, # Up
+        "d": 2, # Down
+        "l": 4, # Left
+        "r": 8, # Right
+        "o": 0, # Open (None)
+        "c": 15 # Closed (All)
+    }
 
-    class Coordinate:
-        def __init__(self, y: int, x: int, o: str = None):
-            self.y = y
-            self.x = x
-            self.o = o
+    # Merge operations dictionary for adjacent coordinates.
+    deltaDir = {
+        (0,1): {"cur": "r", "adj": "l"},
+        (0,-1): {"cur": "l", "adj": "r"},
+        (1,0): {"cur": "d", "adj": "u"},
+        (-1,0): {"cur": "u", "adj": "d"}
+    }
 
     def __init__(self, maze: np.ndarray, mouse: tuple[int, int] = (0,0)):
         """
@@ -1470,33 +1499,136 @@ class MazeSolver:
                 f"Maze Dimensions: ({maze.shape[0]}, {maze.shape[1]})\n" +
                 f"Mouse Coordinates: ({mouse[0]}, {mouse[1]})"
             )
-        # Initialize maze variables.
-        self.mouse = self.Coordinate(mouse[0], mouse[1], self.MazeObject.DOWN)
-        self.Y, self.X = maze.shape[0], maze.shape[1]
+        # Initialize maze variables. Persist maze state for efficient further solving.
+        self.mouse = self.Coordinate((mouse[0], mouse[1]), MazeSolver.Direction.DOWN)
         self.maze = maze.astype(int)
-        self.observedMaze = np.zeros(maze.shape, dtype=int)
+        self.observedMaze = np.zeros(self.maze.shape, dtype=int)
+        self.floodFillMatrix = np.zeros(self.maze.shape, dtype=int)
 
     def __repr__(self):
-        return self._drawMaze(self.maze, self.observedMaze, self.mouse)
+        return self._drawMaze(self.maze, mouse=self.mouse)
+    
+    def solve(self, dest: tuple[int, int] = None, sim: bool = False, history: bool = False):
+        """
+        Solve the maze by relocating the mouse to the destination coordinates (y,x).
+        :param
+        """
+        # Default Destination
+        if dest is None:
+            dest = (self.maze.shape[0]-1, self.maze.shape[1]-1)
+        # Unpack.
+        y, x = dest
+        # Validate destination.
+        if any([
+            y < 0,
+            y >= self.maze.shape[0],
+            x < 0,
+            x >= self.maze.shape[1],
+        ]):
+            raise ValueError(
+                f"[MazeSolver] Destination coordinates must be located in the maze.\n" +
+                f"Maze Dimensions: ({self.maze.shape[0]}, {self.maze.shape[1]})\n" +
+                f"Destination Coordinates: ({y}, {x})"
+            )
+        
+        # Initialize FloodFill matrix for the destination.
+        for j in range(self.maze.shape[0]):
+            for i in range(self.maze.shape[1]):
+                # Compute unobstructed Manhattan distance.
+                self.floodFillMatrix[j,i] = abs(j - y) + abs(i - x)
+        
+        # Solve the maze step-by-step.
+        while True:
+            # Print maze state with non-observed vs. observed walls.
+            if not history:
+                # Clear terminal screen. 
+                os.system('cls' if os.name == 'nt' else 'clear')
+            print(self._drawMaze(self.maze, self.mouse, self.observedMaze))
+
+            # Apply solver simulation mode.
+            if sim:
+                # Wait for 2 seconds and automatically progress.
+                time.sleep(1)
+            else:
+                # Step Mode: User input progresses the solver.
+                userInput = input(f"> Continue progress on MazeSolver? [y/n]\nAnswer: ")
+                if userInput == "n":
+                    # Terminate.
+                    break
+            
+            # Observe walls.
+            for delta, wallDirs in self.deltaDir.items():
+                if self._checkWall(self.mouse.getPos(), self.maze, wallDirs["cur"]):
+                    # Add wall for current cell and adjacent cell.
+                    adjCell = tuple(np.add(self.mouse.getPos(), delta))
+                    self._addWall(self.mouse.getPos(), self.observedMaze, wallDirs["cur"])
+                    try:
+                        self._addWall(adjCell, self.observedMaze, wallDirs["adj"])
+                    except IndexError:
+                        # Wall placement exceeds maze boundary. Do nothing.
+                        pass
+            print(self.observedMaze)
+            
+            # Solve the (observed) maze via FloodFill.
+            self.floodfill(dest)
+                
+            # Compute optimal direction to solve the maze.
+            minDist = float('inf')
+            minDelta = None
+            for delta, wallDirs in self.deltaDir.items():
+                # Validate direction.
+                adjCell = tuple(np.add(self.mouse.getPos(), delta))
+                if adjCell[0] < 0 or adjCell[0] >= self.maze.shape[0] or adjCell[1] < 0 or adjCell[1] >= self.maze.shape[1]:
+                    # Direction exceeds maze boundary. Skip.
+                    continue
+                # Identify the shortest path to destination.
+                adjDist = self.floodFillMatrix[adjCell[0], adjCell[1]]
+                if not self._checkWall(self.mouse.getPos(), self.observedMaze, wallDirs["cur"]) \
+                    and adjDist < min(self.floodFillMatrix[self.mouse.y, self.mouse.x], minDist):
+                    # Update minimum and direction cell.
+                    minDist = adjDist
+                    minDelta = delta
+                    print(minDelta, minDist)
+            if minDelta is None:
+                # No viable direction. Terminate.
+                print(f"Maze is unsolvable! Terminating...")
+                break
+
+            # Move mouse. If not facing in direction of movement, change direction.
+            mvCell = tuple(np.add(self.mouse.getPos(), minDelta))
+            if self.mouse.getDir() != self.deltaDir[minDelta]["cur"]:
+                # Change direction.
+                self.mouse.setDir(self.deltaDir[minDelta]["cur"])
+            else:
+                # Move in optimal direction.
+                self.mouse.setPos(mvCell)
+
+    def floodfill(self, dest: tuple[int, int]):
+        """
+        Execute the FloodFill algorithm to update all
+        Manhattan distances in the (observed) maze
+        to represent the distance to dest.
+        """
+        pass
     
     @classmethod
-    def _checkWall(cls, y: int, x: int, maze: np.ndarray, dir: str = "c"):
-        return bool(maze[y,x] & cls.bitDirection.get(dir, 15))
+    def _checkWall(cls, pos: tuple[int, int], maze: np.ndarray, dir: str = "c"):
+        return bool(maze[pos[0], pos[1]] & cls.bitDirection.get(dir, 15))
     
     @classmethod
-    def _addWall(cls, y: int, x: int, maze: np.ndarray, dir: str = "o"):
-        maze[y,x] |= cls.bitDirection.get(dir, 0)
+    def _addWall(cls, pos: tuple[int, int], maze: np.ndarray, dir: str = "o"):
+        maze[pos[0], pos[1]] |= cls.bitDirection.get(dir, 0)
 
     @classmethod
-    def _deleteWall(cls, y: int, x: int, maze: np.ndarray, dir: str = "o"):
-        maze[y,x] &= ~cls.bitDirection.get(dir, 0)
+    def _deleteWall(cls, pos: tuple[int, int], maze: np.ndarray, dir: str = "o"):
+        maze[pos[0], pos[1]] &= ~cls.bitDirection.get(dir, 0)
 
     @staticmethod
-    def _maze_2d_to_2d(y: int, x: int):
-        return 2*y+1, 2*x+1
+    def _maze_2d_to_2d(pos: tuple[int, int]):
+        return 2*pos[0]+1, 2*pos[1]+1
     
     @staticmethod
-    def _drawMaze(maze: np.ndarray, observedMaze: np.ndarray = None, mouse = None):
+    def _drawMaze(maze: np.ndarray, mouse = None, observedMaze: np.ndarray = None):
         """
         Utilizing the input and observed mazes, expand the coordinate
         system to (2X-1,2Y-1) to draw the current state of the maze.
@@ -1513,40 +1645,40 @@ class MazeSolver:
         for y in range(Y):
             for x in range(X):
                 # Map to raw maze coordinates.
-                j, i = MazeSolver._maze_2d_to_2d(y, x)
+                j, i = MazeSolver._maze_2d_to_2d((y, x))
                 """
                 Maze Cells
                 """
-                if mouse is not None and mouse.y == y and mouse.x == x:
+                if mouse is not None and mouse.getPos() == (y,x):
                     # Set mouse.
-                    graphicMaze[j,i] = mouse.o
+                    graphicMaze[j,i] = MazeSolver.MazeObject.MOUSE_ORIENT[mouse.getDir()]
                 else:
                     # Empty cell.
                     graphicMaze[j,i] = CELL_SPACE
                 """
                 Maze Walls
                 """
-                if MazeSolver._checkWall(y,x,maze,"u"):
+                if MazeSolver._checkWall((y,x), maze, "u"):
                     # North Wall
-                    northWall = MazeSolver.MazeObject.H_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"u") else MazeSolver.MazeObject.H_WALL
+                    northWall = MazeSolver.MazeObject.H_WALL_OBS if observedMaze is not None and MazeSolver._checkWall((y,x), observedMaze, "u") else MazeSolver.MazeObject.H_WALL
                     graphicMaze[j-1,i] = northWall
                 elif graphicMaze[j-1,i]== "?":
                     graphicMaze[j-1,i] = MazeSolver.MazeObject.H_OPEN
-                if MazeSolver._checkWall(y,x,maze,"d"):
+                if MazeSolver._checkWall((y,x), maze, "d"):
                     # South Wall
-                    southWall = MazeSolver.MazeObject.H_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"d") else MazeSolver.MazeObject.H_WALL
+                    southWall = MazeSolver.MazeObject.H_WALL_OBS if observedMaze is not None and MazeSolver._checkWall((y,x), observedMaze, "d") else MazeSolver.MazeObject.H_WALL
                     graphicMaze[j+1,i] = southWall
                 elif graphicMaze[j+1,i] == "?":
                     graphicMaze[j+1,i] = MazeSolver.MazeObject.H_OPEN
-                if MazeSolver._checkWall(y,x,maze,"l"):
+                if MazeSolver._checkWall((y,x), maze, "l"):
                     # West Wall
-                    westWall = MazeSolver.MazeObject.V_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"l") else MazeSolver.MazeObject.V_WALL
+                    westWall = MazeSolver.MazeObject.V_WALL_OBS if observedMaze is not None and MazeSolver._checkWall((y,x), observedMaze, "l") else MazeSolver.MazeObject.V_WALL
                     graphicMaze[j,i-1] = westWall
                 elif graphicMaze[j,i-1] == "?":
                     graphicMaze[j,i-1] = MazeSolver.MazeObject.V_OPEN
-                if MazeSolver._checkWall(y,x,maze,"r"):
+                if MazeSolver._checkWall((y,x), maze, "r"):
                     # East Wall
-                    eastWall = MazeSolver.MazeObject.V_WALL_OBS if observedMaze is not None and MazeSolver._checkWall(y,x,observedMaze,"r") else MazeSolver.MazeObject.V_WALL
+                    eastWall = MazeSolver.MazeObject.V_WALL_OBS if observedMaze is not None and MazeSolver._checkWall((y,x), observedMaze, "r") else MazeSolver.MazeObject.V_WALL
                     graphicMaze[j,i+1] = eastWall
                 elif graphicMaze[j,i+1] == "?":
                     graphicMaze[j,i+1] = MazeSolver.MazeObject.V_OPEN
@@ -1563,8 +1695,8 @@ class MazeSolver:
             outputMaze += "\n"
         return outputMaze
     
-    @staticmethod
-    def generateMaze(length: int, width: int, seed: int = None):
+    @classmethod
+    def generateMaze(cls, length: int, width: int, seed: int = None):
         """
         Generate a random bounded maze using Kruskal's Algorithm.
         """
@@ -1574,13 +1706,6 @@ class MazeSolver:
         # that are connected via destroying walls.
         rng = np.random.default_rng(seed)
         disjointCells = DisjointEnsemble((j,i) for j in range(length) for i in range(width))
-        # Merge operations dictionary for adjacent coordinates.
-        mergeOps = {
-            (0,1): ("r","l"),
-            (0,-1): ("l","r"),
-            (1,0): ("d","u"),
-            (-1,0): ("u","d")
-        }
         while True:
             # Unpack a random starting point.
             j, i = rng.integers(low=0, high=length), rng.integers(low=0, high=width)
@@ -1603,8 +1728,8 @@ class MazeSolver:
                 # Compute differential.
                 delta = tuple(np.subtract(adjCell, (j,i)))
                 # Destroy both walls.
-                MazeSolver._deleteWall(j, i, randomMaze, mergeOps[delta][0])
-                MazeSolver._deleteWall(adjCell[0], adjCell[1], randomMaze, mergeOps[delta][1])
+                MazeSolver._deleteWall((j, i), randomMaze, cls.deltaDir[delta]["cur"])
+                MazeSolver._deleteWall((adjCell[0], adjCell[1]), randomMaze, cls.deltaDir[delta]["adj"])
                 # Merge their sets.
                 disjointCells.treeUnion((j,i), adjCell)
                 union = disjointCells.getSet((j,i))
