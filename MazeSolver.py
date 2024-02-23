@@ -142,6 +142,19 @@ class MazeSolver:
 
         # Solve the maze step-by-step.
         while True:
+
+            # Observe walls to update observedMaze.
+            for delta, wallDirs in self.deltaDir.items():
+                if self._checkWall(self.mouse.getPos(), self.maze, wallDirs["cur"]):
+                    # Add wall for current cell and adjacent cell.
+                    adjCell = self._applyDelta(self.mouse.getPos(), delta)
+                    self._addWall(self.mouse.getPos(), self.observedMaze, wallDirs["cur"])
+                    try:
+                        self._addWall(adjCell, self.observedMaze, wallDirs["adj"])
+                    except IndexError:
+                        # Wall placement exceeds maze boundary. Do nothing.
+                        pass
+
             # Print maze state with non-observed vs. observed walls.
             if not history:
                 # Clear terminal screen. 
@@ -165,18 +178,6 @@ class MazeSolver:
                     # Terminate.
                     print(f"Solver state saved. Terminating the solver...")
                     break
-            
-            # Observe walls to update observedMaze.
-            for delta, wallDirs in self.deltaDir.items():
-                if self._checkWall(self.mouse.getPos(), self.maze, wallDirs["cur"]):
-                    # Add wall for current cell and adjacent cell.
-                    adjCell = self._applyDelta(self.mouse.getPos(), delta)
-                    self._addWall(self.mouse.getPos(), self.observedMaze, wallDirs["cur"])
-                    try:
-                        self._addWall(adjCell, self.observedMaze, wallDirs["adj"])
-                    except IndexError:
-                        # Wall placement exceeds maze boundary. Do nothing.
-                        pass
             
             # Solve the (observed) maze via FloodFill.
             self.floodfill(dest)
@@ -418,7 +419,11 @@ class MazeSolver:
         return randomMaze, (rng.integers(low=0, high=length), rng.integers(low=0, high=width))
     
 print(f"Testing MazeSolver...")
-inputMaze, mouse = MazeSolver.generateMaze(6,12)
+# Generate random maze and mouse position.
+inputMaze, mouse = MazeSolver.generateMaze(8,40)
+# Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
-mazeSolver.solve((3, 9), sim=0.1, history=False)
+# Path Planning
+mazeSolver.solve((7, 39), sim=0.1, history=False)
 mazeSolver.solve((0, 0), sim=0.1, history=False)
+mazeSolver.solve((4, 20), sim=0.1, history=False)
