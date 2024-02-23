@@ -61,6 +61,7 @@ class MazeSolver:
         H_WALL = "---"
         H_WALL_OBS = "==="
         H_OPEN = "   "
+        DEST = " O "
         MOUSE_UP = " ^ "
         MOUSE_LEFT = " < "
         MOUSE_RIGHT = " > "
@@ -121,18 +122,17 @@ class MazeSolver:
         self.maze = maze.astype(int)
         self.observedMaze = np.zeros(self.maze.shape, dtype=int)
         self.floodFillMatrix = np.zeros(self.maze.shape, dtype=int)
+        self.destination = None
 
     def __repr__(self):
-        return self._drawMaze(self.maze, mouse=self.mouse)
+        return self._drawMaze(self.maze, mouse=self.mouse, dest=self.destination)
     
-    def solve(self, dest: tuple[int, int] = (0,0), sim: int = -1, history: bool = False):
+    def solve(self, dest: tuple[int, int] = (0,0), sim: int = -1, history: bool = False, xray: bool = False):
         """
         Solve the maze by relocating the mouse to the destination coordinates (y,x).
-        :param
         """
-        # Unpack.
-        y, x = dest
         # Validate destination.
+        y, x = dest
         if any([
             y < 0,
             y >= self.maze.shape[0],
@@ -144,6 +144,9 @@ class MazeSolver:
                 f"Maze Dimensions: ({self.maze.shape[0]}, {self.maze.shape[1]})\n" +
                 f"Destination Coordinates: ({y}, {x})"
             )
+        
+        # Mark destination.
+        self.destination = dest
         
         # Reset distances for FloodFill.
         self.floodFillMatrix = np.zeros(self.maze.shape, dtype=int)
@@ -167,10 +170,10 @@ class MazeSolver:
             if not history:
                 # Clear terminal screen. 
                 os.system('cls' if os.name == 'nt' else 'clear')
-            print(self._drawMaze(self.maze, self.mouse, self.observedMaze))
+            print(self._drawMaze(self.maze, self.mouse, self.observedMaze, self.destination))
 
             # Terminate solver if the destination is reached.
-            if self.mouse.getPos() == dest:
+            if self.mouse.getPos() == self.destination:
                 # Terminate.
                 print(f"Destination reached! Saving and terminating the solver...")
                 break
@@ -178,7 +181,7 @@ class MazeSolver:
             # Apply solver simulation mode.
             if sim > 0:
                 # Wait for 2 seconds and automatically progress.
-                time.sleep(sim)
+                time.sleep(1/sim)
             else:
                 # Step Mode: User input progresses the solver.
                 userInput = input(f"> Continue progress on MazeSolver? [y/n]\nAnswer: ")
@@ -188,7 +191,7 @@ class MazeSolver:
                     break
             
             # Solve the (observed) maze via FloodFill.
-            self.floodfill(dest)
+            self.floodfill(xray)
                 
             # Compute optimal direction to solve the maze.
             minDist = float('inf')
@@ -213,7 +216,7 @@ class MazeSolver:
 
             # If multiple directions are viable, prioritize moving in the direction of the destination.
             # To sort in order of most aligned to least aligned directions, compute the inner product.
-            destDelta = self._computeDelta(dest, self.mouse.getPos())
+            destDelta = self._computeDelta(self.destination, self.mouse.getPos())
             bestDelta = sorted(
                 [(int(np.inner(delta, destDelta)), delta) for delta in self.deltaDir if delta in minDelta],
                 key=lambda x : x[0],
@@ -229,17 +232,22 @@ class MazeSolver:
                 # Move in optimal direction.
                 self.mouse.setPos(mvCell)
 
-    def floodfill(self, dest: tuple[int, int]):
+    def floodfill(self, xray: bool = False):
         """
         Execute the FloodFill algorithm to update all
         Manhattan distances in the (observed) maze
-        to represent the distance to dest.
+        to represent the distance to the destination.
         """
+        # X-Ray: Observe the complete maze instead of a partial maze.
+        maze = self.observedMaze
+        if xray:
+            maze = self.maze
+
         # Instantiate FloodFill parameters.
         # Set destination distance to 0.
         cellStack = [self.mouse.getPos()]
         cellSet = set([self.mouse.getPos()])
-        self.floodFillMatrix[dest[0], dest[1]] = 0
+        self._posSet(self.floodFillMatrix, self.destination, 0)
 
         # FloodFill
         while cellStack:
@@ -249,7 +257,7 @@ class MazeSolver:
 
             # If cell is the destination, do NOT update the distance.
             # The distance is a constant at 0.
-            if cell == dest:
+            if cell == self.destination:
                 continue
 
             # Compute minimum adjacent distance.
@@ -257,7 +265,7 @@ class MazeSolver:
             for delta, wallDirs in self.deltaDir.items():
                 # Reachable?
                 adjCell = self._applyDelta(cell, delta)
-                if self._checkWall(cell, self.observedMaze, wallDirs["cur"]) or not self._checkMazeBounds(adjCell, self.observedMaze):
+                if self._checkWall(cell, maze, wallDirs["cur"]) or not self._checkMazeBounds(adjCell, maze):
                     # Unreachable cell.
                     continue
                 # Identify adjacent FloodFill distance.
@@ -280,8 +288,8 @@ class MazeSolver:
                 adjCell = self._applyDelta(cell, delta)
                 if all([
                     adjCell not in cellSet,
-                    not self._checkWall(cell, self.observedMaze, wallDirs["cur"]),
-                    self._checkMazeBounds(adjCell, self.observedMaze) 
+                    not self._checkWall(cell, maze, wallDirs["cur"]),
+                    self._checkMazeBounds(adjCell, maze) 
                 ]):
                     cellStack.append(adjCell)
                     cellSet.add(adjCell)
@@ -324,7 +332,7 @@ class MazeSolver:
         return 2*pos[0]+1, 2*pos[1]+1
     
     @staticmethod
-    def _drawMaze(maze: np.ndarray, mouse = None, observedMaze: np.ndarray = None):
+    def _drawMaze(maze: np.ndarray, mouse = None, observedMaze: np.ndarray = None, dest: tuple[int, int] = None):
         """
         Utilizing the input and observed mazes, expand the coordinate
         system to (2X-1,2Y-1) to draw the current state of the maze.
@@ -348,6 +356,9 @@ class MazeSolver:
                 if mouse is not None and mouse.getPos() == (y,x):
                     # Set mouse.
                     graphicMaze[j,i] = MazeSolver.MazeObject.MOUSE_ORIENT[mouse.getDir()]
+                elif dest is not None and dest == (y,x):
+                    # Mark destination on maze.
+                    graphicMaze[j,i] = MazeSolver.MazeObject.DEST
                 else:
                     # Empty cell.
                     graphicMaze[j,i] = CELL_SPACE
@@ -405,13 +416,12 @@ class MazeSolver:
         while True:
             # Unpack a random starting point.
             j, i = rng.integers(low=0, high=length), rng.integers(low=0, high=width)
-            # Randomly choose a neighbor not in the SCC
-            # of the coordinate and within bounds.
+            # Randomly choose a neighbor not in the tree of the coordinate and within bounds.
             adjCoordinates = [
-                x for x in [(j,i+1), (j,i-1), (j+1,i), (j-1,i)]
+                cls._applyDelta((j,i), delta) for delta in cls.deltaDir
                 if all([
-                    cls._checkMazeBounds(x, randomMaze),
-                    disjointCells.findTreeRoot(x) != disjointCells.findTreeRoot((j,i))
+                    cls._checkMazeBounds(cls._applyDelta((j,i), delta), randomMaze),
+                    disjointCells.findTreeRoot(cls._applyDelta((j,i), delta)) != disjointCells.findTreeRoot((j,i))
                 ])
             ]
             rng.shuffle(adjCoordinates)
@@ -441,6 +451,9 @@ inputMaze, mouse = MazeSolver.generateMaze(8,40)
 # Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
 # Path Planning
-mazeSolver.solve((0, 0), sim=0.05, history=False)
-mazeSolver.solve((7, 39), sim=0.05, history=False)
-mazeSolver.solve((4, 20), sim=0.05, history=False)
+SIM_FREQ = 20
+XRAY = False
+HISTORY = False
+mazeSolver.solve((0, 0), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+mazeSolver.solve((7, 39), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+mazeSolver.solve((4, 20), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
