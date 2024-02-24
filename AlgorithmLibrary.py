@@ -1,5 +1,5 @@
 """
-Algorithm Library (Python v3.9.6+)
+Algorithm Library (Python v3.12.2+)
 Implemented by Cory Ye
 For personal educational review.
 """

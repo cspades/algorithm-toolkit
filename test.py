@@ -159,7 +159,6 @@ import time
 # NORM = 1
 # D = 2 * NORM * (rng.random(SHAPE) - 0.5)
 # K = 3
-
 # GMM = GaussianMixture(data=D, k=K, seed=SEED)
 # GMM.fit()
 

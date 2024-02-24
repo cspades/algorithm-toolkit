@@ -1,3 +1,8 @@
+"""
+Machine Learning Library (Python v3.12.2+ / PyTorch 2.2.1+cu121)
+Implemented by Cory Ye
+For personal educational review.
+"""
 import sys
 import math
 import numpy as np
