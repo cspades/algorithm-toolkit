@@ -1,5 +1,5 @@
-from algorithm_library import *
-from ml_library import *
+from AlgorithmLibrary import *
+from MLLibrary import *
 import time
 
 """ Algorithm Library Testing """

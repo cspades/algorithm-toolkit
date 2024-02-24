@@ -1,7 +1,7 @@
 import os
 import time
 import numpy as np
-from algorithm_library import DisjointEnsemble
+from AlgorithmLibrary import DisjointEnsemble
 
 class MazeSolver:
     """
