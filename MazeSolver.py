@@ -413,6 +413,7 @@ class MazeSolver:
         # that are connected via destroying walls.
         rng = np.random.default_rng(seed)
         disjointCells = DisjointEnsemble((j,i) for j in range(length) for i in range(width))
+        cellCount = 0
         while True:
             # Unpack a random starting point.
             j, i = rng.integers(low=0, high=length), rng.integers(low=0, high=width)
@@ -424,11 +425,12 @@ class MazeSolver:
                     disjointCells.findTreeRoot(cls._applyDelta((j,i), delta)) != disjointCells.findTreeRoot((j,i))
                 ])
             ]
-            rng.shuffle(adjCoordinates)
             if not adjCoordinates:
                 # No candidates for connection. Randomly choose another coordinate.
                 continue
             else:
+                # Shuffle options for maze expansion.
+                rng.shuffle(adjCoordinates)
                 # Connect with adjacent cell.
                 adjCell = adjCoordinates[0]
                 # Compute differential.
@@ -438,8 +440,10 @@ class MazeSolver:
                 cls._deleteWall(adjCell, randomMaze, cls.deltaDir[delta]["adj"])
                 # Merge their sets.
                 disjointCells.treeUnion((j,i), adjCell)
-                union = disjointCells.getSet((j,i))
-                if len(union) == length * width:
+                # Increment cell counter.
+                cellCount += 1
+                # Terminate maze generation when all cells in maze have been merged.
+                if cellCount == length * width - 1:
                     # Connected maze. Terminate.
                     break
         # Return randomized maze and mouse.
@@ -447,7 +451,7 @@ class MazeSolver:
     
 print(f"Testing MazeSolver...")
 # Generate random maze and mouse position.
-inputMaze, mouse = MazeSolver.generateMaze(8,40)
+inputMaze, mouse = MazeSolver.generateMaze(20,40)
 # Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
 # Path Planning
@@ -455,5 +459,7 @@ SIM_FREQ = 20
 XRAY = False
 HISTORY = False
 mazeSolver.solve((0, 0), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
-mazeSolver.solve((7, 39), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
-mazeSolver.solve((4, 20), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+mazeSolver.solve((0, 39), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+mazeSolver.solve((19, 0), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+mazeSolver.solve((19, 39), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+mazeSolver.solve((10, 20), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
