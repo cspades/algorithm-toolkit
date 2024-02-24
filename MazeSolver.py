@@ -96,7 +96,11 @@ class MazeSolver:
         "u": (-1,0),
         "d": (1,0),
         "l": (0,-1),
-        "r": (0,1)
+        "r": (0,1),
+        "w": (-1,0),
+        "s": (1,0),
+        "a": (0,-1),
+        "d": (0,1)
     }
 
     def __init__(self, maze: np.ndarray, mouse: tuple[int, int] = (0,0)):
@@ -179,12 +183,14 @@ class MazeSolver:
                 break
 
             # Apply solver simulation mode.
+            userInput = None
             if sim > 0:
                 # Wait for 2 seconds and automatically progress.
                 time.sleep(1/sim)
             else:
                 # Step Mode: User input progresses the solver.
-                userInput = input(f"> Continue progress on MazeSolver? [y/n]\nAnswer: ")
+                rawInput = input(f"> Continue progress on MazeSolver? [y/n/wasd]\nAnswer: ")
+                userInput = "".join(set(x for x in rawInput))
                 if userInput == "n":
                     # Terminate.
                     print(f"Solver state saved. Terminating the solver...")
@@ -192,6 +198,22 @@ class MazeSolver:
             
             # Solve the (observed) maze via FloodFill.
             self.floodfill(xray)
+
+            # Update: If userInput is not None and is WASD, then move the mouse in
+            # that direction if the direction is reachable. Otherwise, do not do
+            # anything if the userInput was specified but not reachable.
+            if userInput in self.dirDelta:
+                # Change mouse direction to user-specified direction.
+                userDir = self.deltaDir[self.dirDelta[userInput]]["cur"]
+                self.mouse.setDir(userDir)
+                if not self._checkWall(self.mouse.getPos(), self.maze, dir=userDir):
+                    # Move in user-specified direction.
+                    self.mouse.setPos(self._applyDelta(self.mouse.getPos(), self.dirDelta[userInput]))
+                    # Continue run loop.
+                    continue
+                else:
+                    # Do nothing. Continue run loop.
+                    continue
                 
             # Compute optimal direction to solve the maze.
             minDist = float('inf')
@@ -403,7 +425,7 @@ class MazeSolver:
         return outputMaze
     
     @classmethod
-    def generateMaze(cls, length: int, width: int, seed: int = None):
+    def generateMaze(cls, length: int, width: int, braid: float = 0.0, seed: int = None):
         """
         Generate a random bounded maze using Kruskal's Algorithm.
         """
@@ -446,20 +468,33 @@ class MazeSolver:
                 if cellCount == length * width - 1:
                     # Connected maze. Terminate.
                     break
+
+        # Remove walls to create braids / cycles in the maze.
+        if braid > 0.0:
+            for _ in range(int(2 * braid * length * width)):
+                # Delete walls in a random direction.
+                randCell = (rng.integers(low=1, high=length-1), rng.integers(low=1, high=width-1))
+                randDelta = tuple(rng.choice(list(cls.deltaDir)))
+                randAdjCell = cls._applyDelta(randCell, randDelta)
+                cls._deleteWall(randCell, randomMaze, cls.deltaDir[randDelta]["cur"])
+                cls._deleteWall(randAdjCell, randomMaze, cls.deltaDir[randDelta]["adj"])
+
         # Return randomized maze and mouse.
         return randomMaze, (rng.integers(low=0, high=length), rng.integers(low=0, high=width))
     
 print(f"Testing MazeSolver...")
 # Generate random maze and mouse position.
-inputMaze, mouse = MazeSolver.generateMaze(20,40)
+SEED=None
+LENGTH=20
+WIDTH=40
+BRAID_DENSITY=0.05
+inputMaze, mouse = MazeSolver.generateMaze(LENGTH, WIDTH, braid=BRAID_DENSITY, seed=SEED)
 # Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
 # Path Planning
-SIM_FREQ = 20
+SIM_FREQ = 25
 XRAY = False
 HISTORY = False
-mazeSolver.solve((0, 0), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
-mazeSolver.solve((0, 39), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
-mazeSolver.solve((19, 0), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
-mazeSolver.solve((19, 39), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
-mazeSolver.solve((10, 20), sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+PATH = [(0, 0), (0, 39), (19, 0), (19, 39), (10, 20)]
+for checkpoint in PATH:
+    mazeSolver.solve(checkpoint, sim=SIM_FREQ, history=HISTORY, xray=XRAY)
