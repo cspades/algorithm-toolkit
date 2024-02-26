@@ -967,7 +967,7 @@ class DisjointEnsemble:
         rootA.children.append(rootB)
         return
     
-    def getSet(self, node: Hashable):
+    def getTree(self, node: Hashable):
         """
         Retrieve the disjoint set associated with node.
         """
@@ -1315,18 +1315,21 @@ class Numerics:
         Uniformly randomly sample exactly k elements from [n] = {0, ..., n-1}.
         When k = n, the algorithm randomly shuffles [n].
 
-        Algorithm iteratively builds on swaps to create permutations,
-        such that newly processed elements (i.e. at index j) swap positions
-        with pre-processed elements (i.e. with index in [0, j-1]) with
-        probability 1/j. Integrating these choices produces a permutation
-        probability of 1/n! when k = n, which is a random shuffle.
+        Algorithm iteratively builds on swaps to create permutations, such that
+        newly processed elements (i.e. at index j) swap positions with pre-processed
+        elements (i.e. with index in [0, j-1]) with probability 1/j. Integrating
+        these choices produces a uniform permutation probability of 1/n! when k = n,
+        which is a random ordering or 'shuffle' of [n].
 
-        When k < n, we can project the space of permutations to the space of
-        combinations by dividing by k! for permutations of length k, which
-        differs from the number of combinations by a (n,k)-invariant constant
-        (n-k)!, which implies that deterministically choosing a subset of k
-        elements (such as the initial k elements in the permutation) represents
-        a uniform random sample when order is irrelevant.
+        When k < n, each k-permutation created by truncating the n-permutation
+        to k initial elements exist with uniform probability (n-k)! / n!, i.e. for
+        each k-permutation there exist (n-k)! permutations of the final (n-k) elements,
+        so the probability of each k-permutation is muliplied by (n-k)!. Furthermore,
+        we can get all k-combinations by ignoring the order of the initial k elements,
+        i.e. for each k-combination there exist k! permutations of the k elements, so
+        the probability of a k-combination is multiplied by k!. Thus, the probability
+        of selecting any k-combination is precisely and uniformly k! (n-k)! / n!, the
+        reciprocal of the combinatorial (n,k). Thus, a uniform random sample of [n].
         """
         # Instantiate the sample of k elements taken from the
         # initial k elements of the complete population.

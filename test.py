@@ -152,6 +152,72 @@ import time
 
 """ Machine Learning Library Testing """
 
+# print(f"Testing Transformer(Module)...")
+
+# # Test Transformer.
+# prompt = torch.tensor([
+#     [1,2,3,4,5],
+#     [6,7,8,9,10]
+# ])
+# query = torch.tensor([
+#     [11,12,13,14,15],
+#     [16,17,18,19,20]
+# ])
+# tx: Transformer = Transformer()
+# print(tx(prompt, query))
+
+# # Input Q, K, and V
+# q = torch.tensor([
+#     [[1.0,2.0,3.0,4.0],
+#      [1.0,5.0,3.0,4.0],
+#      [1.0,2.0,3.0,4.0]]
+# ], requires_grad=True)
+# k = torch.tensor([
+#     [[1.0,2.0,3.0,10.0],
+#      [1.0,2.0,3.0,-1.0],
+#      [1.0,2.0,-3.0,2.5],
+#      [-5.0,2.0,-3.0,7.0]]
+# ], requires_grad=True)
+# v = torch.tensor([
+#     [[1.0,-2.0,3.0,-4.0],
+#      [1.0,2.0,9.0,-27.0],
+#      [1.0,2.0,3.0,20.0],
+#      [-1.0,15.0,3.0,-2.5]]
+# ], requires_grad=True)
+# qkMask = torch.tensor([
+#     [[1.0, 1.0, 1.0, 0.0],
+#      [1.0, 1.0, 0.0, 1.0],
+#      [1.0, 0.0, 1.0, 1.0]]
+# ])
+# gradOutput = torch.tensor([
+#     [[1.0,2.0,3.0], [1.0,2.0,3.0], [1.0,2.0,3.0]]
+# ], requires_grad=True)
+
+# # Test MultiHeadAttention(Module).
+# multiAtx = MultiHeadAttention(q.shape[-1], k.shape[-1], v.shape[-1], heads=2)
+# output = multiAtx(q,k,v,qkMask)
+# print(output)
+
+# # Compare Attention() with torch.nn.functional.scaled_dot_product_attention().
+# atx = Attention()
+# output = atx.apply(q,k,v,qkMask)
+# print(output)
+# gradTest = torch.autograd.grad(output, (q,k,v), gradOutput)
+# print(gradTest)
+# realAtx = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=qkMask)
+# print(realAtx)
+# gradTest = torch.autograd.grad(realAtx, (q,k,v), gradOutput)
+# print(gradTest)
+
+# posEnc = PositionEncoder(3, 5)
+# print(posEnc.positionalEncoding)
+# testTensor = torch.tensor([
+#     [0.0,1.0,2.0,3.0,4.0],
+#     [0.0,1.0,2.0,3.0,4.0],
+#     [0.0,1.0,2.0,3.0,4.0],
+# ])
+# print(posEnc(testTensor))
+
 # print(f"Testing GaussianMixture...")
 # SEED = 4
 # SHAPE = (10, 2)

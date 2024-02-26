@@ -9,7 +9,322 @@ import numpy as np
 import torch
 from torch.nn import *
 from torch.optim import AdamW
-from typing import Union
+from torch.autograd import Function, grad
+from typing import Union, Callable
+
+class Transformer(Module):
+    """
+    Custom PyTorch implementation of Transformer.
+    """
+
+    def __init__(self, encEmbed: torch.Tensor = None, decEmbed: torch.Tensor = None, maxLength: int = 1000, heads: int = 8, stack: int = 3):
+        super().__init__()
+        # Instantiate embedding spaces with consistent dimension.
+        self.encEmbed: Embedding = Embedding.from_pretrained(encEmbed, freeze=True) if encEmbed is not None else Embedding(num_embeddings=100, embedding_dim=16)
+        self.decEmbed: Embedding = Embedding.from_pretrained(decEmbed, freeze=True) if decEmbed is not None else Embedding(num_embeddings=100, embedding_dim=16)
+        if self.decEmbed.embedding_dim != self.encEmbed.embedding_dim:
+            raise ValueError(f"All embedding dimensions of the Transformer must be consistent.\n(Decoder Embed Dim: {self.decEmbed.embedding_dim}, Encoder Embed Dim: {self.encEmbed.embedding_dim})")
+        # Instantiate components of Transformer.
+        self.encoder: TransformerEncoderModule = TransformerEncoderModule(dim=self.encEmbed.embedding_dim, heads=heads, stack=stack)
+        self.decoder: TransformerDecoderModule = TransformerDecoderModule(dim=self.decEmbed.embedding_dim, heads=heads, stack=stack)
+        self.tokenLinear = Linear(maxLength * self.decEmbed.embedding_dim, self.decEmbed.num_embeddings)
+        # Positional Encoding
+        self.pe: PositionEncoder = PositionEncoder(maxLength, self.decEmbed.embedding_dim)
+
+    def forward(self, prompt: torch.Tensor, response: torch.Tensor, promptMask: torch.Tensor = None, responseMask: torch.Tensor = None):
+        # Encode the decoder and encoder inputs, i.e. the response and prompt.
+        responseEmbed = self.decEmbed(response)
+        promptEmbed = self.encEmbed(prompt)
+        # Apply positional encoding.
+        responsePosEmbed = self.pe(responseEmbed)
+        promptPosEmbed = self.pe(promptEmbed)
+        # Encode the prompt. Set mask.
+        self.encoder.setMask(promptMask)
+        encodedPrompt = self.encoder(promptPosEmbed)
+        # Decode the response. Store encoder output and set mask.
+        self.decoder.setMemory(encodedPrompt)
+        self.decoder.setMask(responseMask)
+        decodedResponse = self.decoder(responsePosEmbed)
+        # Compute scores for all possible tokens.
+        # (N, L, D) -> Linear(L x D, T) -> (N, T)
+        print(decodedResponse.flatten(start_dim=-2).shape)
+        paddingSize = self.tokenLinear.in_features - decodedResponse.shape[-1] * decodedResponse.shape[-2]
+        paddingShape = (math.floor(paddingSize/2), math.ceil(paddingSize/2))
+        tokenScores = self.tokenLinear(
+            functional.pad(decodedResponse.flatten(start_dim=-2), paddingShape, value=0.0)
+        ).softmax(dim=-1)
+        return tokenScores
+
+class TransformerEncoderModule(Module):
+    """
+    Custom PyTorch implementation of TransformerEncoder.
+    """
+    def __init__(self, dim: int, heads: int, mask: torch.Tensor = None, stack: int = 1):
+        super().__init__()
+        # Store mask.
+        self.mask = mask
+        # Instantiate parameters for self-attention and dense residual sub-blocks.
+        self.atxResidual = ModuleList([
+            ResidualNorm(lambda x: MultiHeadAttention(dim, dim, dim, heads)(x, x, x, self.mask))
+            for _ in range(stack)
+        ])
+        self.denseResidual = ModuleList([
+            ResidualNorm(lambda x: Linear(dim, dim)(x))
+            for _ in range(stack)
+        ])
+
+    def forward(self, prompt: torch.Tensor):
+        # Encode the prompt.
+        x = prompt
+        # Loop through series of encoder blocks.
+        for atx, dense in zip(self.atxResidual, self.denseResidual):
+            # Self-Attention
+            atxOutput = atx(x)
+            # Dense
+            x = dense(atxOutput)
+        # Return encoded output embeddings.
+        return x
+    
+    def setMask(self, mask: torch.Tensor):
+        self.mask = mask
+
+class TransformerDecoderModule(Module):
+    """
+    Custom PyTorch implementation of TransformerDecoder.
+    """
+    def __init__(self, dim: int, heads: int, encoderMemory: torch.Tensor = None, mask: torch.Tensor = None, stack: int = 1):
+        super().__init__()
+        # Store encoder output.
+        self.encMem = encoderMemory
+        # Store mask.
+        self.mask = mask
+        # Instantiate parameters for self-attention, encoder-decoder attention, and dense residual sub-blocks.
+        self.selfAtxResidual = ModuleList([
+            ResidualNorm(lambda x: MultiHeadAttention(dim, dim, dim, heads)(
+                # Default to identity mask if no mask is provided.
+                x, x, x, self.mask if self.mask is not None else torch.ones(x.shape[-2], x.shape[-2])
+            ))
+            for _ in range(stack)
+        ])
+        self.encAtxResidual = ModuleList([
+            # Note: Encoding tensor only needs to be computed once and memorized.
+            ResidualNorm(lambda x: MultiHeadAttention(dim, dim, dim, heads)(
+                # Default to self-attention if encoder output is not provided.
+                x, self.encMem if self.encMem is not None else x, self.encMem if self.encMem is not None else x
+            ))
+            for _ in range(stack)
+        ])
+        self.denseResidual = ModuleList([
+            ResidualNorm(lambda x: Linear(dim, dim)(x))
+            for _ in range(stack)
+        ])
+
+    def forward(self, response: torch.Tensor):
+        # Given the (previous) response, compute an embedding that attends to the prompt.
+        x = response
+        for selfAtx, encAtx, dense in zip(self.selfAtxResidual, self.encAtxResidual, self.denseResidual):
+            # Self-Attention
+            selfAtxOutput = selfAtx(x)
+            # Encoder-Decoder Attention
+            encAtxOutput = encAtx(selfAtxOutput)
+            # Dense
+            x = dense(encAtxOutput)
+        # Return decoded output embeddings.
+        return x
+    
+    def setMemory(self, encoderMemory: torch.Tensor):
+        self.encMem = encoderMemory
+    
+    def setMask(self, mask: torch.Tensor):
+        self.mask = mask
+    
+class MultiHeadAttention(Module):
+    """
+    Multi-Head Attention Mechanism
+    """
+    def __init__(self, dq: int, dk: int, dv: int, heads: int):
+        super().__init__()
+        # Module parameters.
+        self.numHeads = heads
+        self.qkvcLinear = ModuleList()
+        self.headDims = []
+        # Instantiate heads for QKV.
+        for dim in [dq, dk, dv]:
+            # Validate head dimension divisibility.
+            if dim % heads != 0 or dim // heads == 0:
+                raise ValueError(f"Number of heads ({heads}) should divide the dimension ({dim}) of QKV.")
+            # Instantiate head projections. Because the head projection dimensions
+            # add up to dModel, we can simultaneously compute all head projections
+            # and reshape the output to dHead to retrieve them.
+            self.headDims.append(dim // heads)
+            self.qkvcLinear.append(Linear(dim, dim))
+        # Instantiate head for dense aggrevation layer.
+        self.qkvcLinear.append(Linear(dv, dv))
+
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor = None):
+        # Deduce the number of samples in the batch N.
+        N = q.shape[0]
+        # Apply projections to Q, K, and V.
+        # (N, L, D) -> (N, H, L, D // H)
+        query, key, value = [
+            self.qkvcLinear[i](x).view(N, -1, self.numHeads, self.headDims[i]).transpose(1,2)
+            for i, x in enumerate([q, k, v])
+        ]
+        # Batch-apply attention to Q, K, and V.
+        # (N, H, L, D // H) -> (N, H, LQ, DV // H)
+        atxOutput = Attention.apply(query, key, value, mask)
+        # Concatenate.
+        # (N, H, LQ, DV // H) -> (N, LQ, DV)
+        atxConcat = atxOutput.transpose(1,2).flatten(start_dim=2)
+        # Compute dense aggregation layer.
+        # (N, LQ, DV) -> (N, LQ, DV)
+        return self.qkvcLinear[-1](atxConcat)
+    
+class Attention(Function):
+    """
+    PyTorch implementation of a Q-K-V Scaled Dot-Product Attention Block.
+    """
+    @staticmethod
+    @torch.no_grad
+    def forward(ctx, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor = None):
+        # Validate DQ == DK and LK == LV.
+        if q.shape[-1] != k.shape[-1] or k.shape[-2] != v.shape[-2]:
+            # Inconsistent embedding or sequence dimensions for attention mechanism.
+            raise ValueError(f"[ATXDimError] Require DQ ({q.shape[-1]}) == DK ({k.shape[-1]}) and LK ({k.shape[-2]}) == LV ({v.shape[-2]}) with input dimensions (N,L,D).")
+        DK = k.shape[-1]
+        # Compute co-similarity matrix QK.
+        # (N, *, LQ, LK) = (N, *, LQ, DQ) x (N, *, DK, LK)
+        qk = torch.matmul(q, k.transpose(-1, -2))
+        # Scale co-similarity coefficients by sqrt(DK).
+        qkScaled = qk / torch.sqrt(torch.tensor([DK]))
+        # Apply mask, i.e. reduce the co-similarity score to a large negative number,
+        # which annihilates when the exponential function is applied during softmax.
+        if mask is not None:
+            # Braodcastable masking function, i.e. mask across (LQ, LK).
+            qkScaled = qkScaled.masked_fill(mask.logical_not(), float("-inf"))
+        # Apply softmax across the dimension of K to normalize the convex combination of
+        # value embeddings V weighted by the similarity probability of key embeddings K
+        # for each query embedding in Q, i.e. V_i scaled by the probability or proportion
+        # of which K_i composes Q in order to have embeddings in the space of V that
+        # represent or are attentive to the embeddings in the space of Q.
+        qkSoftmax = qkScaled.softmax(dim=-1)
+        # Compute the QK-convex combination of value embeddings V.
+        # (N, *, LQ, DV) = (N, *, LQ, LK) x (N, *, LV, DV)
+        output = torch.matmul(qkSoftmax, v)
+        # Save tensors for backwards pass.
+        ctx.save_for_backward(q, k, v, qkSoftmax, mask)
+        # Return output embeddings and attention weights.
+        return output
+    
+    @staticmethod
+    @torch.no_grad
+    def backward(ctx, doutput: torch.Tensor):
+        # Unpack the forward propagation values.
+        q, k, v, qkSoftmax, mask = ctx.saved_tensors
+        N = qkSoftmax.shape[0]
+        LQ = qkSoftmax.shape[-2]
+        LK = qkSoftmax.shape[-1]
+        DK = k.shape[-1]
+        # Backpropagate torch.matmul(qkSoftmax, v).
+        dv = torch.matmul(qkSoftmax.transpose(-1,-2), doutput)      # (N, *, LV, DV) = (N, *, LK, LQ) x (N, *, LQ, DV)
+        dqkSoftmax = torch.matmul(doutput, v.transpose(-1,-2))      # (N, *, LQ, LK) = (N, *, LQ, DV) x (N, *, DV, LV)
+        # Per column, the Jacobian partial derivatives for the Softmax,
+        # where S represents "scores" and P represents "softmax probabilities":
+        # dpi/dsi = e^{si} * sum_{!i}(e^{sj}) / sum(e^{sj})^2 = pi * (1 - pi)
+        # dpi/dsj = - e^{si} * e^{sj} / sum(e^{sj})^2 = - pi * pj
+        # which simplifies to: Diag(P) - P x P^{T} for each dimension of Q.
+        diagSoftmax = qkSoftmax.view(N,-1,LQ,LK,1) * torch.diag(torch.ones(LK))
+        dSoftmax = diagSoftmax - torch.matmul(qkSoftmax.view(N,-1,LQ,LK,1), qkSoftmax.view(N,-1,LQ,1,LK))
+        # Backpropagate qkScaled.softmax(dim=-1).
+        # dqkScaled = dSoftmax(qkScaled) x dqkSoftmax
+        # (N, *, LQ, LK) = (N, *, LQ, LK, LK) x (N, *, LQ, LK, 1)
+        dqkScaled = torch.matmul(dSoftmax, dqkSoftmax.view(N,-1,LQ,LK,1)).view(N,-1,LQ,LK)
+        # Backpropagate the constant mask.
+        if mask is not None:
+            # Derivative of a (large negative) constant is 0.
+            dqkScaled = dqkScaled.masked_fill(mask.logical_not(), 0.0)
+        # Backpropagate the scaling.
+        dqk = dqkScaled / torch.sqrt(torch.tensor([DK]))
+        # Backpropagate the attention co-similarity matrix.
+        dq = torch.matmul(dqk, k)                       # (N, *, LQ, DQ) = (N, *, LQ, LK) x (N, *, LK, DK)
+        dk = torch.matmul(dqk.transpose(-1,-2), q)      # (N, *, LK, DK) = (N, *, LK, LQ) x (N, *, LQ, DQ)
+        # Return derivatives.
+        return dq, dk, dv, None
+    
+class ResidualNorm(Module):
+    """
+    Attached Residual + Normalization Layer for Transformer.
+
+    For more information on LayerNorm, refer to:
+    https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
+    """
+    def __init__(self, baseModule: Union[Module, Callable]):
+        super().__init__()
+        self.baseModule = baseModule
+    def forward(self, x: torch.Tensor):
+        """
+        Compute LayerNorm(x + baseModule(x)).
+        """
+        return LayerNorm(x.shape[-1])(x + self.baseModule(x))
+    
+class PositionEncoder(Module):
+    """
+    Add a positional encoding based on 2-D rotations (SO(2)) to the input Tensor.
+    Assumes that x has the shape (*, L, D) where L represents the positional dimension
+    and D represents the embedding dimension.
+
+    For each pair of indices (2i,2i+1) in the embedding dimension d at position k,
+    and with trigonometric "base" period t, we have:
+
+    P(k,2i)   = sin(k/t^{2i/d})
+    P(k,2i+1) = cos(k/t^{2i/d})
+
+    When the positional encoding is combined with the input embedding vectors,
+    subsequent inner products between position-encoded embedding vectors will
+    invoke the following angle difference formula, e.g. if d = 2 we have:
+    
+    <x(k),y(l)> = <(sin(k), cos(k)), (sin(l), cos(l))>
+                = sin(k) sin(l) + cos(k) cos(l)
+                = cos(k - l) = cos(l - k)
+
+    Model weights sensitive to these inner products from self-attention layers
+    can learn positional features through the trigonometric encoding cos(|k-l|).
+
+    Note that because the period of the encoding is extremely large, i.e. on the
+    order of t^{O(L)} where t is typically chosen to be sufficiently large, this
+    encoding supports a large quantity of unique positional encoding values before
+    the encoding "overflows" into the next period of the trigonometric sinusoids,
+    in which case such tokens close and far will be indistinguishable.
+    """
+
+    def __init__(self, maxLength: int, maxDim: int, t: int = 10000):
+        super().__init__()
+        self.maxLength = maxLength
+        self.maxDim = maxDim
+        # Positions to encode.
+        # Shape: (maxLength, 1)
+        posArray = torch.arange(0, maxLength).view(maxLength, 1)
+        # Dimension indices to encode.
+        # Shape: (1, maxDim)
+        halfDim = maxDim/2
+        dimArray = torch.pow(torch.tensor([t]), 2 * torch.arange(0, math.ceil(halfDim)) / maxDim).view(1, -1)
+        # Cache the positional encoding tensor.
+        # Shape: (maxLength, maxDim)
+        self.positionalEncoding = torch.zeros(maxLength, maxDim)
+        self.positionalEncoding[:,0::2] = torch.sin(torch.div(posArray, dimArray[:,:math.ceil(halfDim)]))
+        self.positionalEncoding[:,1::2] = torch.cos(torch.div(posArray, dimArray[:,:math.floor(halfDim)]))
+
+    def forward(self, x: torch.Tensor):
+        """
+        Compute x + self.positionalEncoding. Truncate to match the shape of x.
+        """
+        return x + self.positionalEncoding[:x.shape[-2],:x.shape[-1]]
+    
+    def getMaxLength(self):
+        return self.maxLength
+    
+    def getMaxDim(self):
+        return self.maxDim
 
 class GaussianMixture:
     """
@@ -29,7 +344,7 @@ class GaussianMixture:
         :param seed <int>:                          Random seed to fix the initialization of the Gaussians.
         """
         # Import data as torch.Tensor.
-        self.data = torch.Tensor(data)
+        self.data = torch.tensor(data)
         self.N, self.D = self.data.shape
         self.K = k
 
@@ -127,8 +442,8 @@ class GaussianMixture:
             )
 
             # Optimize expected / average class covariance parameters.
-            data_reshaped = self.data.view(1, self.N, self.D, 1).expand(self.K, -1, -1, 1)
-            mu_reshaped = self.mu.view(self.K, 1, self.D, 1).expand(-1, self.N, -1, 1)
+            data_reshaped = self.data.view(1, self.N, self.D, 1)
+            mu_reshaped = self.mu.view(self.K, 1, self.D, 1)
             # Reshape to (K, N, D, 1) to compute covariance of shape (D, D) = (D, 1) x (1, D).
             deviation = data_reshaped - mu_reshaped
             # (K, N, D, D) = (K, N, D, 1) x (K, N, 1, D)
@@ -209,9 +524,9 @@ class GaussianMixture:
         """
         # Reshape both x and mu to (M, K, D, 1). Reshape sigma to (M, K, D, D).
         M = x.shape[0]
-        x_reshaped = x.view(M, 1, self.D, 1).expand(-1, self.K, -1, 1)
-        mu_reshaped = mu.view(1, self.K, self.D, 1).expand(M, -1, -1, 1)
-        sigma_reshaped = sigma.view(1, self.K, self.D, self.D).expand(M, -1, -1, -1)
+        x_reshaped = x.view(M, 1, self.D, 1)
+        mu_reshaped = mu.view(1, self.K, self.D, 1)
+        sigma_reshaped = sigma.view(1, self.K, self.D, self.D)
         # Compute x - mu.
         deviation = x_reshaped - mu_reshaped
         # Compute the squared Mahalanobis distance.
@@ -292,14 +607,14 @@ class MatrixFactorize(Module):
             return None
 
         # Class Parameters
-        self.M = torch.Tensor(M)
+        self.M = torch.tensor(M)
         self.x, self.y = self.M.shape
         self.dim = dim
         self.bias = bias
         self.mask = torch.ones(self.M.shape)
         if mask is not None and mask.shape == self.M.shape:
             # Construct Boolean mask Tensor.
-            self.mask = torch.where(torch.Tensor(mask) != 0, 1, 0)
+            self.mask = torch.where(torch.tensor(mask) != 0, 1, 0)
 
         # Fix random seed.
         self.torch_gen = None
@@ -549,13 +864,13 @@ class FactorizationMachine(Module):
         # Convert and instantiate Tensor(s).
         N = X.shape[0]
         if not torch.is_tensor(X):
-            X = torch.Tensor(X)
+            X = torch.tensor(X)
         if not torch.is_tensor(Y):
-            Y = torch.Tensor(Y)
+            Y = torch.tensor(Y)
         mask_tensor = torch.ones(X.shape)
         if mask is not None:
             # Construct Boolean mask Tensor.
-            mask_tensor = torch.where(torch.Tensor(mask) != 0, 1, 0)
+            mask_tensor = torch.where(torch.tensor(mask) != 0, 1, 0)
 
         # Instantiate optimizer.
         optimizer = AdamW(
