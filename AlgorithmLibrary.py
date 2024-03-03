@@ -720,7 +720,7 @@ class TarjanSCC:
     """
     Compute all strongly-connected components in a directed graph G.
     Utilizes Tarjan's strongly-connected components recursion DFS algorithm.
-    Returns a list of strongly-connected components.
+    Returns a list of strongly-connected components sorted topologically.
     """
 
     def __init__(self, graph):

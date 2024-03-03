@@ -163,7 +163,7 @@ import time
 #     [11,12,13,14,15],
 #     [16,17,18,19,20]
 # ])
-# tx: Transformer = Transformer()
+# tx: Transformer = Transformer(seed=42)
 # print(tx(prompt, query))
 
 # # Input Q, K, and V

@@ -14,11 +14,15 @@ from typing import Union, Callable
 
 class Transformer(Module):
     """
-    Custom PyTorch implementation of Transformer.
+    Custom PyTorch implementation of Transformer. For more information on the model,
+    refer to the paper "Attention Is All You Need": https://arxiv.org/pdf/1706.03762.pdf.
     """
 
-    def __init__(self, encEmbed: torch.Tensor = None, decEmbed: torch.Tensor = None, maxLength: int = 1000, heads: int = 8, stack: int = 3):
+    def __init__(self, encEmbed: torch.Tensor = None, decEmbed: torch.Tensor = None, maxLength: int = 1000, heads: int = 8, stack: int = 3, seed: int = None):
         super().__init__()
+        # Fix random seed.
+        if seed is not None:
+            torch.manual_seed(seed)
         # Instantiate embedding spaces with consistent dimension.
         self.encEmbed: Embedding = Embedding.from_pretrained(encEmbed, freeze=True) if encEmbed is not None else Embedding(num_embeddings=100, embedding_dim=16)
         self.decEmbed: Embedding = Embedding.from_pretrained(decEmbed, freeze=True) if decEmbed is not None else Embedding(num_embeddings=100, embedding_dim=16)
@@ -32,23 +36,35 @@ class Transformer(Module):
         self.pe: PositionEncoder = PositionEncoder(maxLength, self.decEmbed.embedding_dim)
 
     def forward(self, prompt: torch.Tensor, response: torch.Tensor, promptMask: torch.Tensor = None, responseMask: torch.Tensor = None):
-        # Encode the decoder and encoder inputs, i.e. the response and prompt.
-        responseEmbed = self.decEmbed(response)
+        # Encode. Memorize output of encoder in decoder.
+        self.encode(prompt, promptMask)
+        # Decode. Output generated token probabilities.
+        return self.decode(response, responseMask)
+    
+    def encode(self, prompt: torch.Tensor, promptMask: torch.Tensor):
+        # Lookup token embeddings.
         promptEmbed = self.encEmbed(prompt)
         # Apply positional encoding.
-        responsePosEmbed = self.pe(responseEmbed)
         promptPosEmbed = self.pe(promptEmbed)
-        # Encode the prompt. Set mask.
+        # Encode prompt.
         self.encoder.setMask(promptMask)
         encodedPrompt = self.encoder(promptPosEmbed)
-        # Decode the response. Store encoder output and set mask.
+        # Store encoded prompt into decoder.
         self.decoder.setMemory(encodedPrompt)
+        # Return output of the encoder.
+        return encodedPrompt
+
+    def decode(self, response: torch.Tensor, responseMask: torch.Tensor):
+        # Lookup token embeddings.
+        responseEmbed = self.decEmbed(response)
+        # Apply positional encoding.
+        responsePosEmbed = self.pe(responseEmbed)
+        # Decode the response. Utilizes memorized prompt encoding.
         self.decoder.setMask(responseMask)
         decodedResponse = self.decoder(responsePosEmbed)
-        # Compute scores for all possible tokens.
+        # Compute scores for all possible tokens. Because L is variable, infer from shape.
         # (N, L, D) -> Linear(L x D, T) -> (N, T)
-        paddingSize = self.tokenLinear.in_features - decodedResponse.shape[-1] * decodedResponse.shape[-2]
-        paddingShape = (math.floor(paddingSize/2), math.ceil(paddingSize/2))
+        paddingShape = (0, self.tokenLinear.in_features - self.decEmbed.embedding_dim * decodedResponse.shape[-2])
         tokenScores = self.tokenLinear(
             functional.pad(decodedResponse.flatten(start_dim=-2), paddingShape, value=0.0)
         ).softmax(dim=-1)
@@ -68,7 +84,7 @@ class TransformerEncoderModule(Module):
             for _ in range(stack)
         ])
         self.denseResidual = ModuleList([
-            ResidualNorm(lambda x: Linear(dim, dim)(x))
+            ResidualNorm(lambda x: Linear(dim, dim)(LeakyReLU()(Linear(dim, dim)(x))))
             for _ in range(stack)
         ])
 
@@ -114,7 +130,7 @@ class TransformerDecoderModule(Module):
             for _ in range(stack)
         ])
         self.denseResidual = ModuleList([
-            ResidualNorm(lambda x: Linear(dim, dim)(x))
+            ResidualNorm(lambda x: Linear(dim, dim)(LeakyReLU()(Linear(dim, dim)(x))))
             for _ in range(stack)
         ])
 
