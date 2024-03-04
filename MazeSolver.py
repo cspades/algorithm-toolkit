@@ -131,7 +131,7 @@ class MazeSolver:
     def __repr__(self):
         return self._drawMaze(self.maze, mouse=self.mouse, dest=self.destination)
     
-    def solve(self, dest: tuple[int, int] = (0,0), sim: int = -1, history: bool = False, xray: bool = False):
+    def solve(self, dest: tuple[int, int] = (0,0), sim: bool = True, xray: bool = False, debug: bool = False):
         """
         Solve the maze by relocating the mouse to the destination coordinates (y,x).
         """
@@ -157,7 +157,6 @@ class MazeSolver:
 
         # Solve the maze step-by-step.
         while True:
-
             # Observe walls to update observedMaze.
             for delta, wallDirs in self.deltaDir.items():
                 if self._checkWall(self.mouse.getPos(), self.maze, wallDirs["cur"]):
@@ -170,11 +169,10 @@ class MazeSolver:
                         # Wall placement exceeds maze boundary. Do nothing.
                         pass
 
+            # Clear terminal screen.
+            os.system('cls' if os.name == 'nt' else 'clear')
             # Print maze state with non-observed vs. observed walls.
-            if not history:
-                # Clear terminal screen. 
-                os.system('cls' if os.name == 'nt' else 'clear')
-            print(self._drawMaze(self.maze, self.mouse, self.observedMaze, self.destination))
+            print(self._drawMaze(self.maze, self.mouse, self.destination, self.observedMaze, self.floodFillMatrix if debug else None))
 
             # Terminate solver if the destination is reached.
             if self.mouse.getPos() == self.destination:
@@ -184,9 +182,9 @@ class MazeSolver:
 
             # Apply solver simulation mode.
             userInput = None
-            if sim > 0:
-                # Wait for 2 seconds and automatically progress.
-                time.sleep(1/sim)
+            if sim:
+                # Wait inversely proportional to volume of the maze.
+                time.sleep(1/np.prod(self.maze.shape))
             else:
                 # Step Mode: User input progresses the solver.
                 rawInput = input(f"> Continue progress on MazeSolver? [y/n/wasd]\nAnswer: ")
@@ -272,15 +270,11 @@ class MazeSolver:
         self._posSet(self.floodFillMatrix, self.destination, 0)
 
         # FloodFill
+        prevMin = {}
         while cellStack:
             # Pop stack.
             cell = cellStack.pop()
             cellSet.remove(cell)
-
-            # If cell is the destination, do NOT update the distance.
-            # The distance is a constant at 0.
-            if cell == self.destination:
-                continue
 
             # Compute minimum adjacent distance.
             minDist = float('inf')
@@ -296,14 +290,21 @@ class MazeSolver:
                     # Update minimum distance.
                     minDist = adjDist
             
+            # Set current cell Manhattan distance to minimum distance of adjacent reachable cells + 1.
+            # Do not update destination cell - the distance from the destination is constant at 0.
+            if self._posLookup(self.floodFillMatrix, cell) != minDist + 1 and minDist != float('inf'):
+                # Update.
+                if cell != self.destination:
+                    self._posSet(self.floodFillMatrix, cell, minDist + 1)
             
-            # Set current cell Manhattan distance to minimum distance of adjacent reachable cells.
-            if self._posLookup(self.floodFillMatrix, cell) == minDist + 1 or minDist == float('inf'):
-                # No update necessary if there are no reachable cells or the distance is set to minDist + 1.
+            # Termination Criteria - Previous adjacent minimum distance is identical to the current adjacent minimum distance.
+            # Otherwise, the solution distance gradient needs to be updated in the proximity of the cell via FloodFill.
+            if minDist == prevMin.get(cell, None):
+                # Terminate update search starting from cell.
                 continue
             else:
-                # Update.
-                self._posSet(self.floodFillMatrix, cell, minDist + 1)
+                # Save previous adjacent minimum distance at cell.
+                prevMin[cell] = minDist
 
             # Push adjacent reachable cells into the stack.
             for delta, wallDirs in self.deltaDir.items():
@@ -354,7 +355,7 @@ class MazeSolver:
         return 2*pos[0]+1, 2*pos[1]+1
     
     @staticmethod
-    def _drawMaze(maze: np.ndarray, mouse = None, observedMaze: np.ndarray = None, dest: tuple[int, int] = None):
+    def _drawMaze(maze: np.ndarray, mouse = None, dest: tuple[int, int] = None, observedMaze: np.ndarray = None, floodFill: np.ndarray = None):
         """
         Utilizing the input and observed mazes, expand the coordinate
         system to (2X-1,2Y-1) to draw the current state of the maze.
@@ -381,6 +382,9 @@ class MazeSolver:
                 elif dest is not None and dest == (y,x):
                     # Mark destination on maze.
                     graphicMaze[j,i] = MazeSolver.MazeObject.DEST
+                elif floodFill is not None:
+                    # Show FloodFill distances on maze.
+                    graphicMaze[j,i] = f"{floodFill[y,x]:>3}"
                 else:
                     # Empty cell.
                     graphicMaze[j,i] = CELL_SPACE
@@ -492,9 +496,9 @@ inputMaze, mouse = MazeSolver.generateMaze(LENGTH, WIDTH, braid=BRAID_DENSITY, s
 # Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
 # Path Planning
-SIM_FREQ = 25
+SIM = True
 XRAY = False
-HISTORY = False
-PATH = [(0, 0), (0, 39), (19, 0), (19, 39), (10, 20)]
+DEBUG = False
+PATH = [(0, 0), (0, WIDTH-1), (LENGTH-1, 0), (LENGTH-1, WIDTH-1), (LENGTH//2, WIDTH//2)]
 for checkpoint in PATH:
-    mazeSolver.solve(checkpoint, sim=SIM_FREQ, history=HISTORY, xray=XRAY)
+    mazeSolver.solve(checkpoint, sim=SIM, xray=XRAY, debug=DEBUG)
