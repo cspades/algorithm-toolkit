@@ -7,10 +7,12 @@ import sys
 import math
 import numpy as np
 import torch
+from AlgorithmLibrary import Numerics
+from torch.autograd import Function, grad
 from torch.nn import *
 from torch.optim import AdamW
-from torch.autograd import Function, grad
-from typing import Union, Callable
+from torch.utils.data import Dataset, DataLoader
+from typing import Union, Callable, Tuple
 
 class Transformer(Module):
     """
@@ -41,27 +43,25 @@ class Transformer(Module):
         # Decode. Output generated token probabilities.
         return self.decode(response, responseMask)
     
-    def encode(self, prompt: torch.Tensor, promptMask: torch.Tensor):
+    def encode(self, prompt: torch.Tensor, promptMask: torch.Tensor = None):
         # Lookup token embeddings.
         promptEmbed = self.encEmbed(prompt)
         # Apply positional encoding.
         promptPosEmbed = self.pe(promptEmbed)
         # Encode prompt.
-        self.encoder.setMask(promptMask)
-        encodedPrompt = self.encoder(promptPosEmbed)
+        encodedPrompt = self.encoder(promptPosEmbed, promptMask)
         # Store encoded prompt into decoder.
         self.decoder.setMemory(encodedPrompt)
         # Return output of the encoder.
         return encodedPrompt
 
-    def decode(self, response: torch.Tensor, responseMask: torch.Tensor):
+    def decode(self, response: torch.Tensor, responseMask: torch.Tensor = None):
         # Lookup token embeddings.
         responseEmbed = self.decEmbed(response)
         # Apply positional encoding.
         responsePosEmbed = self.pe(responseEmbed)
         # Decode the response. Utilizes memorized prompt encoding.
-        self.decoder.setMask(responseMask)
-        decodedResponse = self.decoder(responsePosEmbed)
+        decodedResponse = self.decoder(responsePosEmbed, responseMask)
         # Compute scores for all possible tokens. Because L is variable, infer from shape.
         # (N, L, D) -> Linear(L x D, T) -> (N, T)
         paddingShape = (0, self.tokenLinear.in_features - self.decEmbed.embedding_dim * decodedResponse.shape[-2])
@@ -69,89 +69,150 @@ class Transformer(Module):
             functional.pad(decodedResponse.flatten(start_dim=-2), paddingShape, value=0.0)
         ).softmax(dim=-1)
         return tokenScores
+    
+    def train(
+        self,
+        trainData: Union[Tuple[torch.Tensor], torch.Tensor],
+        evalData: Union[Tuple[torch.Tensor], torch.Tensor],
+        numEpoch: int = 25,
+        batchSize: int = 16,
+        lr: float = 2e-3,
+        seed: int = None
+    ):
+        # Setup training on GPU.
+        device = torch.device("cuda" if (torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
+
+        # Build optimizer.
+        adam = self.buildOptimizer(lr)
+
+        # Setup loss function.
+        loss = self.buildLossFunction()
+
+        # Construct Datasets.
+        tpData, trData, epData, erData = None, None, None, None
+        if isinstance(trainData, tuple) and len(trainData) == 2:
+            tpData = TokenSequence(trainData[0], maskedSequence=False)
+            trData = TokenSequence(trainData[1], maskedSequence=True)
+        else:
+            tpData, trData = TokenSequence.dualTokenSequence(trainData, shuffle=True, seed=seed)
+        if isinstance(evalData, tuple) and len(evalData) == 2:
+            epData = TokenSequence(evalData[0], maskedSequence=False)
+            erData = TokenSequence(evalData[0], maskedSequence=True)
+        else:
+            epData, erData = TokenSequence.dualTokenSequence(evalData, shuffle=True, seed=seed+1)
+
+        # Construct DataLoader.
+        tpLoader = DataLoader(dataset=tpData, batch_size=batchSize, pin_memory=True, num_workers=4*torch.cuda.device_count())
+        trLoader = DataLoader(dataset=trData, batch_size=batchSize, pin_memory=True, num_workers=4*torch.cuda.device_count())
+
+        # Train.
+        for epoch in range(numEpoch):
+            for i, batch in enumerate(zip(tpLoader, trLoader)):
+
+                # Unpack prompt and response batch.
+                pmptBatch, respBatch = batch
+
+                # Unpack input sequence, generated labels, and mask for response.
+                resp, gen, rMask = respBatch
+
+                # Unpack input sequence and mask for prompt.
+                pmpt, _, pMask = pmptBatch
+
+                # Zero gradients of model.
+                self.zero_grad()
+
+                # Forward propagate.
+                outputTokenProb = self(pmpt, resp, pMask, rMask)
+
+                # Compute loss.
+                batchLoss = loss(outputTokenProb, gen).sum()
+                print(f"Epoch: {epoch+1} / {numEpoch} | Batch: {i} / {len(tpLoader)} | Loss: {batchLoss}")
+
+                # Compute gradients.
+                batchLoss.backward()
+
+                # Apply gradients to optimize loss.
+                adam.step()
+        
+    def buildLossFunction(self):
+        return CrossEntropyLoss()
+
+    def buildOptimizer(self, lr: float, beta1: float = 0.9, beta2: float = 0.98):
+        return AdamW(self.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=1e-2)
 
 class TransformerEncoderModule(Module):
     """
     Custom PyTorch implementation of TransformerEncoder.
     """
-    def __init__(self, dim: int, heads: int, mask: torch.Tensor = None, stack: int = 1):
+    def __init__(self, dim: int, heads: int, stack: int = 1):
         super().__init__()
-        # Store mask.
-        self.mask = mask
         # Instantiate parameters for self-attention and dense residual sub-blocks.
+        self.multiHead = ModuleList([MultiHeadAttention(dim, dim, dim, heads) for _ in range(stack)])
         self.atxResidual = ModuleList([
-            ResidualNorm(lambda x: MultiHeadAttention(dim, dim, dim, heads)(x, x, x, self.mask))
-            for _ in range(stack)
+            ResidualNorm(lambda x, mask: self.multiHead[i](x, x, x, mask))
+            for i in range(stack)
         ])
+        self.linearStack = ModuleList([Linear(dim, dim) for _ in range(2*stack)])
         self.denseResidual = ModuleList([
-            ResidualNorm(lambda x: Linear(dim, dim)(LeakyReLU()(Linear(dim, dim)(x))))
-            for _ in range(stack)
+            ResidualNorm(lambda x, _: self.linearStack[2*i](LeakyReLU()(self.linearStack[2*i+1](x))))
+            for i in range(stack)
         ])
 
-    def forward(self, prompt: torch.Tensor):
+    def forward(self, prompt: torch.Tensor, mask: torch.Tensor = None):
         # Encode the prompt.
         x = prompt
         # Loop through series of encoder blocks.
         for atx, dense in zip(self.atxResidual, self.denseResidual):
             # Self-Attention
-            atxOutput = atx(x)
+            atxOutput = atx(x, mask)
             # Dense
-            x = dense(atxOutput)
+            x = dense(atxOutput, None)
         # Return encoded output embeddings.
         return x
-    
-    def setMask(self, mask: torch.Tensor):
-        self.mask = mask
 
 class TransformerDecoderModule(Module):
     """
     Custom PyTorch implementation of TransformerDecoder.
     """
-    def __init__(self, dim: int, heads: int, encoderMemory: torch.Tensor = None, mask: torch.Tensor = None, stack: int = 1):
+    def __init__(self, dim: int, heads: int, encoderMemory: torch.Tensor = None, stack: int = 1):
         super().__init__()
         # Store encoder output.
         self.encMem = encoderMemory
-        # Store mask.
-        self.mask = mask
         # Instantiate parameters for self-attention, encoder-decoder attention, and dense residual sub-blocks.
+        self.multiHead = ModuleList([MultiHeadAttention(dim, dim, dim, heads) for _ in range(2*stack)])
         self.selfAtxResidual = ModuleList([
-            ResidualNorm(lambda x: MultiHeadAttention(dim, dim, dim, heads)(
-                # Default to identity mask if no mask is provided.
-                x, x, x, self.mask if self.mask is not None else torch.ones(x.shape[-2], x.shape[-2])
-            ))
-            for _ in range(stack)
+            ResidualNorm(lambda x, mask: self.multiHead[2*i](x, x, x, mask))
+            for i in range(stack)
         ])
         self.encAtxResidual = ModuleList([
             # Note: Encoding tensor only needs to be computed once and memorized.
-            ResidualNorm(lambda x: MultiHeadAttention(dim, dim, dim, heads)(
+            ResidualNorm(lambda x, _: self.multiHead[2*i+1](
                 # Default to self-attention if encoder output is not provided.
                 x, self.encMem if self.encMem is not None else x, self.encMem if self.encMem is not None else x
             ))
-            for _ in range(stack)
+            for i in range(stack)
         ])
+        self.linearStack = ModuleList([Linear(dim, dim) for _ in range(2*stack)])
         self.denseResidual = ModuleList([
-            ResidualNorm(lambda x: Linear(dim, dim)(LeakyReLU()(Linear(dim, dim)(x))))
-            for _ in range(stack)
+            ResidualNorm(lambda x, _: self.linearStack[2*i](LeakyReLU()(self.linearStack[2*i+1](x))))
+            for i in range(stack)
         ])
 
-    def forward(self, response: torch.Tensor):
+    def forward(self, response: torch.Tensor, mask: torch.Tensor = None):
         # Given the (previous) response, compute an embedding that attends to the prompt.
         x = response
         for selfAtx, encAtx, dense in zip(self.selfAtxResidual, self.encAtxResidual, self.denseResidual):
             # Self-Attention
-            selfAtxOutput = selfAtx(x)
+            selfAtxOutput = selfAtx(x, mask)
             # Encoder-Decoder Attention
-            encAtxOutput = encAtx(selfAtxOutput)
+            encAtxOutput = encAtx(selfAtxOutput, None)
             # Dense
-            x = dense(encAtxOutput)
+            x = dense(encAtxOutput, None)
         # Return decoded output embeddings.
         return x
     
     def setMemory(self, encoderMemory: torch.Tensor):
         self.encMem = encoderMemory
-    
-    def setMask(self, mask: torch.Tensor):
-        self.mask = mask
     
 class MultiHeadAttention(Module):
     """
@@ -187,7 +248,8 @@ class MultiHeadAttention(Module):
         ]
         # Batch-apply attention to Q, K, and V.
         # (N, H, L, D // H) -> (N, H, LQ, DV // H)
-        atxOutput = Attention.apply(query, key, value, mask)
+        headMask = mask.view(N, 1, q.shape[1], k.shape[1]) if mask is not None else None
+        atxOutput = Attention.apply(query, key, value, headMask)
         # Concatenate.
         # (N, H, LQ, DV // H) -> (N, LQ, DV)
         atxConcat = atxOutput.transpose(1,2).flatten(start_dim=2)
@@ -215,14 +277,14 @@ class Attention(Function):
         # Apply mask, i.e. reduce the co-similarity score to a large negative number,
         # which annihilates when the exponential function is applied during softmax.
         if mask is not None:
-            # Braodcastable masking function, i.e. mask across (LQ, LK).
+            # Braodcastable masking function, i.e. mask across (N, *, LQ, LK).
             qkScaled = qkScaled.masked_fill(mask.logical_not(), float("-inf"))
         # Apply softmax across the dimension of K to normalize the convex combination of
         # value embeddings V weighted by the similarity probability of key embeddings K
         # for each query embedding in Q, i.e. V_i scaled by the probability or proportion
         # of which K_i composes Q in order to have embeddings in the space of V that
         # represent or are attentive to the embeddings in the space of Q.
-        qkSoftmax = qkScaled.softmax(dim=-1)
+        qkSoftmax = qkScaled.softmax(dim=-1).nan_to_num(nan=0.0)
         # Compute the QK-convex combination of value embeddings V.
         # (N, *, LQ, DV) = (N, *, LQ, LK) x (N, *, LV, DV)
         output = torch.matmul(qkSoftmax, v)
@@ -276,11 +338,11 @@ class ResidualNorm(Module):
     def __init__(self, baseModule: Union[Module, Callable]):
         super().__init__()
         self.baseModule = baseModule
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
         """
         Compute LayerNorm(x + baseModule(x)).
         """
-        return LayerNorm(x.shape[-1])(x + self.baseModule(x))
+        return LayerNorm(x.shape[-1])(x + self.baseModule(x, mask))
     
 class PositionEncoder(Module):
     """
@@ -340,6 +402,90 @@ class PositionEncoder(Module):
     
     def getMaxDim(self):
         return self.maxDim
+
+class TokenSequence(Dataset):
+
+    def __init__(self, data: torch.Tensor, maskedSequence: bool = False):
+        # Store token sequences.
+        # Shape: (N, L)
+        self.seqs = data
+        # Store masked response sequences if maskedSequence,
+        # else store duplicated prompt sequences x (L-1).
+        self.X = self._triangleExpand(data) if maskedSequence else self._duplExpand(data)
+        # Store generated token labels.
+        self.Y = self._labelExpand(data)
+        # Compute batched masks for X.
+        seqMask = self.X.unsqueeze(-1)
+        # (N, L, L) = (N, L, 1) x (N, 1, L)
+        self.triMask = torch.matmul(seqMask, seqMask.transpose(-1,-2)).bool()
+
+    @staticmethod
+    def dualTokenSequence(data: torch.Tensor, shuffle: bool = False, seed: int = None):
+        """
+        Static Dual-Prompt/Response Dataset Builder for TokenSequence
+        """
+        # Shuffle and partition dataset of prompts and responses.
+        # Shape: (N, 2, L)
+        dual = data
+        if shuffle:
+            randomShuffle = Numerics.randomSample(data.shape[0], seed=seed)
+            dual = data[randomShuffle]
+        # Build Prompt and Response TokenSequence Datasets.
+        return (
+            # Prompt
+            TokenSequence(dual[:,0,:], maskedSequence=False),
+            # Response
+            TokenSequence(dual[:,1,:], maskedSequence=True),
+        )
+
+    def __len__(self):
+        # Length of expanded masked sequence data.
+        return self.X.shape[0]
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        # Retrieve input, output, and regressive mask.
+        return self.X[idx], self.Y[idx], self.triMask[idx]
+    
+    def _triangleExpand(self, data: torch.Tensor):
+        """
+        Expand sequences into previous tokens.
+        """
+        # Shape: [N x (L-1), L]
+        return data.unsqueeze(-2).expand(-1,self.seqs.shape[-1],-1).tril()[:,:-1,:].flatten(0,1)
+    
+    def _labelExpand(self, data: torch.Tensor):
+        """
+        Expand sequences into a generated label.
+        """
+        # Shape: [N x (L-1)]
+        return data[:,1:].flatten(0,1)
+    
+    def _duplExpand(self, data: torch.Tensor):
+        """
+        Duplicate sequences x (L-1).
+        """
+        # Shape: [N x (L-1)]
+        return data.unsqueeze(-2).expand(-1,self.seqs.shape[-1]-1,-1).flatten(0,1)
+
+    def shape(self):
+        return self.seqs.shape
+    
+    def getSize(self):
+        return self.shape()[0]
+    
+    def getData(self):
+        return self.seqs
+    
+    def getX(self):
+        return self.X
+    
+    def getY(self):
+        return self.Y
+    
+    def getMask(self):
+        return self.triMask
 
 class GaussianMixture:
     """

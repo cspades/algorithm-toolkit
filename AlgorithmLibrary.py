@@ -1310,10 +1310,10 @@ class Numerics:
                 return p_k % n
     
     @staticmethod
-    def randomSample(n: int, k: int):
+    def randomSample(n: int, k: int = None, seed: int = None):
         """
         Uniformly randomly sample exactly k elements from [n] = {0, ..., n-1}.
-        When k = n, the algorithm randomly shuffles [n].
+        When k = n or None, the algorithm randomly shuffles [n].
 
         Algorithm iteratively builds on swaps to create permutations, such that
         newly processed elements (i.e. at index j) swap positions with pre-processed
@@ -1331,6 +1331,9 @@ class Numerics:
         of selecting any k-combination is precisely and uniformly k! (n-k)! / n!, the
         reciprocal of the combinatorial (n,k). Thus, a uniform random sample of [n].
         """
+        # Set random seed.
+        if seed is not None:
+            random.seed(seed)
         # Instantiate the sample of k elements taken from the
         # initial k elements of the complete population.
         population = [i for i in range(0, n)]
@@ -1342,7 +1345,9 @@ class Numerics:
             if idx < j:
                 # Swap. 
                 population[idx], population[j] = population[j], population[idx]
-        return population[0:k]
+        if k is not None:
+            population = population[0:k]
+        return population
     
     @staticmethod
     def triangleAverage(l: list[float]):
