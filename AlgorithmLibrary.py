@@ -538,6 +538,124 @@ class QuickSort:
         # Swap left and right.
         seq[right], seq[left] = seq[left], seq[right]
 
+
+class BinarySearchTree:
+
+    class Node:
+        def __init__(self, value = None):
+            self.data = value
+            self.left = None
+            self.right = None
+        def getData(self):
+            return self.data
+        def setData(self, data):
+            self.data = data
+        def getLeft(self):
+            return self.left
+        def setLeft(self, node):
+            self.left = node
+        def getRight(self):
+            return self.right
+        def setRight(self, node):
+            self.right = node
+
+    def __init__(self):
+        self.root = None
+
+    def __repr__(self):
+        # Print all elements of the BST.
+        return f"{self.sort()}"
+
+    def getRoot(self):
+        return self.root
+
+    def search(self, value):
+        # Find the node containing value.
+        return self._traverse(value, find=True)[0]
+
+    def insert(self, value):
+        # Empty tree.
+        if self.root is None:
+            # Insert node.
+            self.root = self.Node(value)
+            return
+        # Iterate through the binary search tree.
+        prevNode = self._traverse(value, find=False)[1]
+        # Insert leaf.
+        newNode = self.Node(value)
+        if prevNode.getData() > value:
+            # Attach new node to left of prevNode.
+            prevNode.setLeft(newNode)
+        else:
+            # Attach new node to right of prevNode.
+            prevNode.setRight(newNode)
+
+    def sort(self):
+        return self._sort(self.root)
+
+    def _traverse(self, value, find: bool = True):
+        """
+        Traverse the binary search tree.
+        """
+        # Iterate through the binary search tree.
+        curNode = self.root
+        prevNode = self.root
+        while curNode is not None:
+            # Compare with value at curNode.
+            if curNode.getData() == value and find:
+                return curNode, prevNode
+            elif curNode.getData() > value:
+                # Step into left sub-tree.
+                prevNode = curNode
+                curNode = curNode.getLeft()
+            else:
+                # Step into right sub-tree.
+                prevNode = curNode
+                curNode = curNode.getRight()
+        # Return curNode and prevNode.
+        return curNode, prevNode
+
+    def _sort(self, node):
+        if node is None:
+            return []
+        # Return in-order traversal representation.
+        return self._sort(node.getLeft()) + [node.getData()] + self._sort(node.getRight())
+
+    @classmethod
+    def isBST(cls, root) -> bool:
+        return cls._isBST(root)[0]
+
+    @classmethod
+    def _isBST(cls, root) -> tuple[bool, int, int]:
+        """
+        Recursive implementation for BinarySearchTree validation.
+        """
+        if root is None:
+            # Empty tree is BST.
+            return True, None, None
+        # Check if sub-trees are BST. Track sub-tree minimum and maximum values.
+        leftBST, rightBST = True, True
+        leftMin, leftMax, rightMin, rightMax = None, None, None, None
+        if root.getLeft() is not None:
+            leftBST, leftMin, leftMax = cls._isBST(root.getLeft())
+        if root.getRight() is not None:
+            rightBST, rightMin, rightMax = cls._isBST(root.getRight())
+        # Validate if tree is BST.
+        if all([
+            leftBST,
+            rightBST,
+            leftMax is None or root.getData() >= leftMax,
+            rightMin is None or root.getData() < rightMin
+        ]):
+            # Compute minimum and maximum of validated BST.
+            treeMin = leftMin if leftMin is not None else root.getData()
+            treeMax = rightMax if rightMax is not None else root.getData()
+            return True, treeMin, treeMax
+        else:
+            # Invalid BST.
+            return False, None, None
+
+
 class LinkedList:
     """
     Linked list implementation with common transformations.
@@ -1164,7 +1282,121 @@ class LevenshteinDP:
 
         # Print optimal alignment score.
         return self.edit[-1][-1]
+                
 
+class Numerics:
+    
+    @staticmethod
+    def randNFromRandK(n: int, k: int):
+        """
+        Generate a uniformly random integer from [n]
+        given a random sampling granularity of [k].
+        """
+        # Execute randInt(k) multiple times and assign combinations to [0,6].
+        while True:
+            # Sample k-nary coefficients from 0 to k-1.
+            subSample = []
+            for _ in range(n // k + 1):
+                subSample.append(random.randint(0,k-1))
+            # Decode the k-nary number from the k-nary representation.
+            p_k = sum([pow(k, i) * subSample[i] for i in range(len(subSample))])
+            # Delete non-defined combinations, i.e. numbers greater than
+            # the largest multiple of n less than the largest possible sample x.
+            x = sum([pow(k, i) * (k-1) for i in range(len(subSample))])
+            if p_k < x - x % n:
+                # Return randN.
+                return p_k % n
+    
+    @staticmethod
+    def randomSample(n: int, k: int = None, seed: int = None):
+        """
+        Uniformly randomly sample exactly k elements from [n] = {0, ..., n-1}.
+        When k = n or None, the algorithm randomly shuffles [n].
+
+        Algorithm iteratively builds on swaps to create permutations, such that
+        newly processed elements (i.e. at index j) swap positions with pre-processed
+        elements (i.e. with index in [0, j-1]) with probability 1/j. Integrating
+        these choices produces a uniform permutation probability of 1/n! when k = n,
+        which is a random ordering or 'shuffle' of [n].
+
+        When k < n, each k-permutation created by truncating the n-permutation
+        to k initial elements exist with uniform probability (n-k)! / n!, i.e. for
+        each k-permutation there exist (n-k)! permutations of the final (n-k) elements,
+        so the probability of each k-permutation is muliplied by (n-k)!. Furthermore,
+        we can get all k-combinations by ignoring the order of the initial k elements,
+        i.e. for each k-combination there exist k! permutations of the k elements, so
+        the probability of a k-combination is multiplied by k!. Thus, the probability
+        of selecting any k-combination is precisely and uniformly k! (n-k)! / n!, the
+        reciprocal of the combinatorial (n,k). Thus, a uniform random sample of [n].
+        """
+        # Set random seed.
+        if seed is not None:
+            random.seed(seed)
+        # Instantiate the sample of k elements taken from the
+        # initial k elements of the complete population.
+        population = [i for i in range(0, n)]
+        # Iterate through the array, randomly sampling a number
+        # in [0, j-1] such that the element at that sampled index
+        # is replaced / swapped with the element at j.
+        for j in range(0, n):
+            idx = random.randint(0, j)
+            if idx < j:
+                # Swap. 
+                population[idx], population[j] = population[j], population[idx]
+        if k is not None:
+            population = population[0:k]
+        return population
+    
+    @staticmethod
+    def triangleAverage(l: list[float]):
+        """
+        Compute all moving averages of l.
+        """
+        avgList = []
+        m = 0
+        n = 0
+        for x in l:
+            # Compute moving average.
+            m = Numerics.movingAverage(x, m, n)
+            n += 1
+            avgList.append(m)
+        return avgList
+    
+    @staticmethod
+    def triangleVariance(l: list[float]):
+        """
+        Compute all moving variances of l.
+        """
+        varList = []
+        m = 0
+        v = 0
+        n = 0
+        for x in l:
+            # Compute moving variance.
+            v = Numerics.movingVariance(x, m, v, n)
+            # Compute moving average.
+            m = Numerics.movingAverage(x, m, n)
+            n += 1
+            varList.append(v)
+        return varList
+
+    @staticmethod
+    def movingAverage(x: float, m: float, n: int):
+        """
+        Provided a new element x and a moving average m of n elements,
+        compute the new average including x.
+        """
+        # Compute the moving average.
+        return (m * n + x) / (n + 1)
+    
+    @staticmethod
+    def movingVariance(x: float, m: float, v: float, n: int):
+        """
+        Provided a new element x, a moving average m, and moving
+        variance v of n elements, compute the new variance including x.
+        """
+        return v * n / (n+1) + pow(x-m, 2) * n / pow(n+1, 2)
+    
 
 class WaterCapture:
     """
@@ -1284,117 +1516,46 @@ class WaterCapture:
         
         # Return integrated volume.
         return volume
-                
+    
 
-class Numerics:
-    
-    @staticmethod
-    def randNFromRandK(n: int, k: int):
-        """
-        Generate a uniformly random integer from [n]
-        given a random sampling granularity of [k].
-        """
-        # Execute randInt(k) multiple times and assign combinations to [0,6].
-        while True:
-            # Sample k-nary coefficients from 0 to k-1.
-            subSample = []
-            for _ in range(n // k + 1):
-                subSample.append(random.randint(0,k-1))
-            # Decode the k-nary number from the k-nary representation.
-            p_k = sum([pow(k, i) * subSample[i] for i in range(len(subSample))])
-            # Delete non-defined combinations, i.e. numbers greater than
-            # the largest multiple of n less than the largest possible sample x.
-            x = sum([pow(k, i) * (k-1) for i in range(len(subSample))])
-            if p_k < x - x % n:
-                # Return randN.
-                return p_k % n
-    
-    @staticmethod
-    def randomSample(n: int, k: int = None, seed: int = None):
-        """
-        Uniformly randomly sample exactly k elements from [n] = {0, ..., n-1}.
-        When k = n or None, the algorithm randomly shuffles [n].
+class TokenPartition:
 
-        Algorithm iteratively builds on swaps to create permutations, such that
-        newly processed elements (i.e. at index j) swap positions with pre-processed
-        elements (i.e. with index in [0, j-1]) with probability 1/j. Integrating
-        these choices produces a uniform permutation probability of 1/n! when k = n,
-        which is a random ordering or 'shuffle' of [n].
+    def __init__(self, tokenSet: list[str] = None):
+        self.tokenSet = set()
+        if tokenSet is not None:
+            self.tokenSet.update(token.capitalize() for token in tokenSet if len(token) > 0)
+        self.suffixCache = {}
 
-        When k < n, each k-permutation created by truncating the n-permutation
-        to k initial elements exist with uniform probability (n-k)! / n!, i.e. for
-        each k-permutation there exist (n-k)! permutations of the final (n-k) elements,
-        so the probability of each k-permutation is muliplied by (n-k)!. Furthermore,
-        we can get all k-combinations by ignoring the order of the initial k elements,
-        i.e. for each k-combination there exist k! permutations of the k elements, so
-        the probability of a k-combination is multiplied by k!. Thus, the probability
-        of selecting any k-combination is precisely and uniformly k! (n-k)! / n!, the
-        reciprocal of the combinatorial (n,k). Thus, a uniform random sample of [n].
-        """
-        # Set random seed.
-        if seed is not None:
-            random.seed(seed)
-        # Instantiate the sample of k elements taken from the
-        # initial k elements of the complete population.
-        population = [i for i in range(0, n)]
-        # Iterate through the array, randomly sampling a number
-        # in [0, j-1] such that the element at that sampled index
-        # is replaced / swapped with the element at j.
-        for j in range(0, n):
-            idx = random.randint(0, j)
-            if idx < j:
-                # Swap. 
-                population[idx], population[j] = population[j], population[idx]
-        if k is not None:
-            population = population[0:k]
-        return population
-    
-    @staticmethod
-    def triangleAverage(l: list[float]):
-        """
-        Compute all moving averages of l.
-        """
-        avgList = []
-        m = 0
-        n = 0
-        for x in l:
-            # Compute moving average.
-            m = Numerics.movingAverage(x, m, n)
-            n += 1
-            avgList.append(m)
-        return avgList
-    
-    @staticmethod
-    def triangleVariance(l: list[float]):
-        """
-        Compute all moving variances of l.
-        """
-        varList = []
-        m = 0
-        v = 0
-        n = 0
-        for x in l:
-            # Compute moving variance.
-            v = Numerics.movingVariance(x, m, v, n)
-            # Compute moving average.
-            m = Numerics.movingAverage(x, m, n)
-            n += 1
-            varList.append(v)
-        return varList
+    def __repr__(self):
+        return f"{self.tokenSet}"
 
-    @staticmethod
-    def movingAverage(x: float, m: float, n: int):
+    def tokenize(self, corpus: str, cache: bool = True) -> list[str]:
         """
-        Provided a new element x and a moving average m of n elements,
-        compute the new average including x.
+        Case-insensitively partition the corpus into tokens.
+        Return all valid token permutations. For example:
+        TokenSet: {"C", "Ca", "Th", "At", "He", "R", "I", "Ne", "N", "E", "Ly"}
+        Corpus: Catherine
+        Output: ['CAtHeRINE', 'CAtHeRINe', 'CaThERINE', 'CaThERINe']
+        Corpus: Caitlyn
+        Output: []
         """
-        # Compute the moving average.
-        return (m * n + x) / (n + 1)
-    
-    @staticmethod
-    def movingVariance(x: float, m: float, v: float, n: int):
-        """
-        Provided a new element x, a moving average m, and moving
-        variance v of n elements, compute the new variance including x.
-        """
-        return v * n / (n+1) + pow(x-m, 2) * n / pow(n+1, 2)
+        # Base case.
+        if len(corpus) == 0:
+            return [""]
+        # Recursively construct permutations of tokens
+        # that perfectly partition the corpus.
+        output = []
+        for tokenLength in range(1, len(corpus)+1):
+            # Validate token.
+            if corpus[0:tokenLength].capitalize() in self.tokenSet:
+                # Lookup suffix in tokenization cache.
+                suffixSet = self.suffixCache.get(corpus[tokenLength:].lower(), set())
+                if not suffixSet:
+                    # Compute partitions of the suffix.
+                    suffixSet.update(self.tokenize(corpus[tokenLength:]))
+                # Cache tokenized suffixes.
+                if len(corpus[tokenLength:]) > 0 and cache:
+                    self.suffixCache.setdefault(corpus[tokenLength:].lower(), set()).update(suffixSet)
+                # Combine prefix token with suffix tokenization.
+                output.extend([corpus[0:tokenLength].capitalize() + x for x in suffixSet])
+        return output

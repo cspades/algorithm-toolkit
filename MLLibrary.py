@@ -14,6 +14,15 @@ from torch.optim import AdamW
 from torch.utils.data import Dataset, DataLoader
 from typing import Union, Callable, Tuple
 
+class RandomForest:
+    """
+    Implementation of a Random Forest, i.e. an ensemble of decision trees
+    that represent input data features splits to reduce the entropy or deviation
+    of target labels or values based on categorical or continuous features.
+    """
+    def __init__(self):
+        pass
+
 class Transformer(Module):
     """
     Custom PyTorch implementation of Transformer. For more information on the model,
@@ -29,7 +38,10 @@ class Transformer(Module):
         self.encEmbed: Embedding = Embedding.from_pretrained(encEmbed, freeze=True) if encEmbed is not None else Embedding(num_embeddings=100, embedding_dim=16)
         self.decEmbed: Embedding = Embedding.from_pretrained(decEmbed, freeze=True) if decEmbed is not None else Embedding(num_embeddings=100, embedding_dim=16)
         if self.decEmbed.embedding_dim != self.encEmbed.embedding_dim:
-            raise ValueError(f"All embedding dimensions of the Transformer must be consistent.\n(Decoder Embed Dim: {self.decEmbed.embedding_dim}, Encoder Embed Dim: {self.encEmbed.embedding_dim})")
+            raise ValueError(
+                f"Transformer embedding dimensions must be consistent between the encoder and decoder.\n" +
+                f"(Decoder Embed Dim: {self.decEmbed.embedding_dim}, Encoder Embed Dim: {self.encEmbed.embedding_dim})"
+            )
         # Instantiate components of Transformer.
         self.encoder: TransformerEncoderModule = TransformerEncoderModule(dim=self.encEmbed.embedding_dim, heads=heads, stack=stack)
         self.decoder: TransformerDecoderModule = TransformerDecoderModule(dim=self.decEmbed.embedding_dim, heads=heads, stack=stack)
@@ -125,7 +137,7 @@ class Transformer(Module):
                 outputTokenProb = self(pmpt, resp, pMask, rMask)
 
                 # Compute loss.
-                batchLoss = loss(outputTokenProb, gen).sum()
+                batchLoss = loss(outputTokenProb, gen)
                 print(f"Epoch: {epoch+1} / {numEpoch} | Batch: {i} / {len(tpLoader)} | Loss: {batchLoss}")
 
                 # Compute gradients.

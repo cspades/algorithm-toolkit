@@ -1,4 +1,5 @@
 import os
+import random
 import time
 import numpy as np
 from AlgorithmLibrary import DisjointEnsemble
@@ -491,7 +492,7 @@ print(f"Testing MazeSolver...")
 SEED=None
 LENGTH=20
 WIDTH=40
-BRAID_DENSITY=0.05
+BRAID_DENSITY=0.025
 inputMaze, mouse = MazeSolver.generateMaze(LENGTH, WIDTH, braid=BRAID_DENSITY, seed=SEED)
 # Instantiate MazeSolver.
 mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
@@ -499,6 +500,7 @@ mazeSolver = MazeSolver(maze=inputMaze, mouse=mouse)
 SIM = True
 XRAY = False
 DEBUG = False
-PATH = [(0, 0), (0, WIDTH-1), (LENGTH-1, 0), (LENGTH-1, WIDTH-1), (LENGTH//2, WIDTH//2)]
+WAYPOINTS = 20
+PATH = [(random.randint(0,LENGTH-1), random.randint(0,WIDTH-1)) for _ in range(WAYPOINTS)] + [(LENGTH//2,WIDTH//2)]
 for checkpoint in PATH:
     mazeSolver.solve(checkpoint, sim=SIM, xray=XRAY, debug=DEBUG)

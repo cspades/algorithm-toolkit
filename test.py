@@ -43,6 +43,34 @@ def main():
     # QuickSort.sort(b, reverse=False)
     # print(b)
 
+    # print(f"Testing BinarySearchTree...")
+    # bst = BinarySearchTree()
+    # print(bst)
+    # bst.insert(2)
+    # bst.insert(-1)
+    # bst.insert(5)
+    # bst.insert(-10)
+    # bst.insert(4)
+    # bst.insert(0)
+    # print(bst)
+    # print(bst.search(4).getData())
+    # print(bst.search(2000))
+    # # Test isBST.
+    # root = BinarySearchTree.Node(2)
+    # n1 = BinarySearchTree.Node(-1)
+    # n2 = BinarySearchTree.Node(5)
+    # n3 = BinarySearchTree.Node(-10)
+    # n4 = BinarySearchTree.Node(4)
+    # n5 = BinarySearchTree.Node(0)
+    # n6 = BinarySearchTree.Node(2000)
+    # root.setLeft(n1)
+    # root.setRight(n4)
+    # n1.setLeft(n3)
+    # n1.setRight(n5)
+    # # n4.setLeft(n2)
+    # n4.setRight(n6)
+    # print(BinarySearchTree.isBST(root))
+
     # print(f"Testing LinkedList...")
     # ll = LinkedList()
     # ll.append(LinkedList.Node("1"))
@@ -152,6 +180,21 @@ def main():
     # print(Numerics.triangleAverage(l))
     # print(Numerics.triangleVariance(l))
 
+    # print(f"Testing TokenPartition...")
+    # tokenList = ["c", "ca", "th", "at", "he", "r", "i", "ne", "n", "e", "ly"]
+    # tPart = TokenPartition(tokenList)
+    # print(tPart)
+    # EX1 = "CAthErinE"
+    # EX2 = "cAitlYn"
+    # t1 = time.time()
+    # tPart.tokenize(EX1 * 8, cache=False)
+    # t2 = time.time()
+    # tPart.tokenize(EX1 * 8, cache=True)
+    # t3 = time.time()
+    # print(tPart.tokenize(EX1))
+    # print(tPart.tokenize(EX2))
+    # print(f"Non-Cached Speed: {t2-t1} | Cached Speed: {t3-t2}")
+
     """ Machine Learning Library Testing """
 
     # print(f"Testing Transformer(Module)...")
@@ -174,8 +217,8 @@ def main():
     #     ]
     # ])
     # promptDataset, responseDataset = TokenSequence.dualTokenSequence(dual, shuffle=True, seed=SEED)
-    # for dataset in [promptDataset, responseDataset]:
-    #     print(f"{dataset.getX()}\n{dataset.getY()}\n{dataset.getMask()}\n{dataset[1]}")
+    # # for dataset in [promptDataset, responseDataset]:
+    # #     print(f"{dataset.getX()}\n{dataset.getY()}\n{dataset.getMask()}\n{dataset[1]}")
 
     # tx: Transformer = Transformer(stack=1, seed=SEED)
     # print(tx(promptDataset.getX(), responseDataset.getX(), promptDataset.getMask(), responseDataset.getMask()))
