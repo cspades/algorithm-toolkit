@@ -20,7 +20,7 @@ class RandomForest:
     that represent input data features splits to reduce the entropy or deviation
     of target labels or values based on categorical or continuous features.
     """
-    def __init__(self):
+    def __init__(self, regression=False):
         pass
 
 class Transformer(Module):

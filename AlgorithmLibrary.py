@@ -1285,7 +1285,57 @@ class LevenshteinDP:
                 
 
 class Numerics:
-    
+
+    def __init__(self):
+        # To compute moving medians.
+        self.minHeap = []
+        self.maxHeap = []
+
+    def movingMedian(self, x: float):
+        """
+        Compute the median of a datastream with incoming data x.
+        """
+        # Compute current median.
+        curMedian = self.median()
+        # Insert new value in appropriate heap.
+        if curMedian is None or x > curMedian:
+            # Insert into minHeap of upper partition.
+            heapq.heappush(self.minHeap, x)
+            # Rebalance heaps.
+            if len(self.minHeap) > len(self.maxHeap) + 1:
+                # Pop from minHeap and push into maxHeap.
+                val = heapq.heappop(self.minHeap)
+                heapq.heappush(self.maxHeap, -val)
+        else:
+            # Insert into maxHeap of lower partition.
+            # Flip sign of x because heapq implements minHeap.
+            heapq.heappush(self.maxHeap, -x)
+            # Rebalance heaps.
+            if len(self.maxHeap) > len(self.minHeap) + 1:
+                # Pop from maxHeap and push into minHeap.
+                val = -heapq.heappop(self.maxHeap)
+                heapq.heappush(self.minHeap, val)
+
+        # Identify new median.
+        return self.median()
+
+    def median(self):
+        if not self.minHeap and not self.maxHeap:
+            # Empty distribution.
+            return None
+        # Identify new median.
+        if len(self.minHeap) == len(self.maxHeap):
+            # Average center to compute median.
+            return (self.minHeap[0] - self.maxHeap[0]) / 2
+        elif len(self.minHeap) > len(self.maxHeap):
+            return self.minHeap[0]
+        else:
+            return -self.maxHeap[0]
+
+    def clearMedianCache(self):
+        self.minHeap = []
+        self.maxHeap = []
+
     @staticmethod
     def randNFromRandK(n: int, k: int):
         """

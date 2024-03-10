@@ -161,24 +161,36 @@ def main():
     # print(wc.water_volume_alt())
 
     # print(f"Testing Numerics...")
+    # nmrcs = Numerics()
     # SEED = 0
     # N = 100
     # K = 10
     # # Sample
-    # print(Numerics.randomSample(N, K, SEED))
+    # print(nmrcs.randomSample(N, K, SEED))
     # # Shuffle
-    # print(Numerics.randomSample(N, N, SEED))
+    # print(nmrcs.randomSample(N, N, SEED))
     # S = 100000
     # count = 0
     # for _ in range(S):
-    #     x = Numerics.randNFromRandK(n=N, k=K)
+    #     x = nmrcs.randNFromRandK(n=N, k=K)
     #     if x == 0:
     #         count += 1
     # print(f"Expected Probability: {1 / N} | Experimental Ratio: {count / S}")
 
     # l = [1,2,3,4,5,6,7]
-    # print(Numerics.triangleAverage(l))
-    # print(Numerics.triangleVariance(l))
+    # print(nmrcs.triangleAverage(l))
+    # print(nmrcs.triangleVariance(l))
+    # print(
+    #     nmrcs.movingMedian(0),
+    #     nmrcs.movingMedian(6),
+    #     nmrcs.movingMedian(-10),
+    #     nmrcs.movingMedian(19),
+    #     nmrcs.movingMedian(4),
+    #     nmrcs.movingMedian(-5),
+    # )
+    # print(nmrcs.maxHeap, nmrcs.minHeap)
+    # nmrcs.clearMedianCache()
+    # print(nmrcs.maxHeap, nmrcs.minHeap)
 
     # print(f"Testing TokenPartition...")
     # tokenList = ["c", "ca", "th", "at", "he", "r", "i", "ne", "n", "e", "ly"]
