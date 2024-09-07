@@ -23,11 +23,11 @@ class MazeSolver:
     For instance, the sequence of numbers (11, 7, 10) will represent the
     following adjacent maze cells in the (y,x)-coordinate system:
 
-    . ------> x
+    . ------> x-axis
     | --- ---
     | 11 | 7  10 |
     v --- --- ---
-    y
+    y-axis
     """
     class Coordinate:
         def __init__(self, pos: tuple[int, int] = (0,0), dir: str = None):
