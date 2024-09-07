@@ -98,7 +98,7 @@ class Transformer(Module):
         adam = self.buildOptimizer(lr)
 
         # Setup loss function.
-        loss = self.buildLossFunction()
+        loss = CrossEntropyLoss()
 
         # Construct Datasets.
         tpData, trData, epData, erData = None, None, None, None
@@ -145,9 +145,6 @@ class Transformer(Module):
 
                 # Apply gradients to optimize loss.
                 adam.step()
-        
-    def buildLossFunction(self):
-        return CrossEntropyLoss()
 
     def buildOptimizer(self, lr: float, beta1: float = 0.9, beta2: float = 0.98):
         return AdamW(self.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=1e-2)
