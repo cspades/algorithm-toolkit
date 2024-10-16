@@ -1566,9 +1566,21 @@ class WaterCapture:
         
         # Return integrated volume.
         return volume
-    
 
-class TokenPartition:
+
+class CombinatorialTokenizer:
+    """
+    Class that computes all possible tokenizations of an input string.
+
+    Given N as the length of the input string in either tokens or characters,
+    and M is the total number of possible tokenizations of the input string,
+    we have the approximate time and space complexities of this algorithm:
+
+    Worst-Case Time Complexity (cache=False): O(N!)
+    Space Complexity (cache=False): O(1)
+    Time Complexity (cache=True): O(M)
+    Worst-Case Space Complexity (cache=True): O(M^N)
+    """
 
     def __init__(self, tokenSet: list[str] = None):
         self.tokenSet = set()
@@ -1579,33 +1591,33 @@ class TokenPartition:
     def __repr__(self):
         return f"{self.tokenSet}"
 
-    def tokenize(self, corpus: str, cache: bool = True) -> list[str]:
+    def tokenize(self, input_string: str, cache: bool = True) -> list[str]:
         """
-        Case-insensitively partition the corpus into tokens.
+        Case-insensitively partition the input_string into tokens.
         Return all valid token permutations. For example:
         TokenSet: {"C", "Ca", "Th", "At", "He", "R", "I", "Ne", "N", "E", "Ly"}
-        Corpus: Catherine
+        Input: Catherine
         Output: ['CAtHeRINE', 'CAtHeRINe', 'CaThERINE', 'CaThERINe']
-        Corpus: Caitlyn
+        Input: Caitlyn
         Output: []
         """
         # Base case.
-        if len(corpus) == 0:
+        if len(input_string) == 0:
             return [""]
         # Recursively construct permutations of tokens
-        # that perfectly partition the corpus.
+        # that perfectly partition the input_string.
         output = []
-        for tokenLength in range(1, len(corpus)+1):
+        for tokenLength in range(1, len(input_string)+1):
             # Validate token.
-            if corpus[0:tokenLength].capitalize() in self.tokenSet:
+            if input_string[0:tokenLength].capitalize() in self.tokenSet:
                 # Lookup suffix in tokenization cache.
-                suffixSet = self.suffixCache.get(corpus[tokenLength:].lower(), set())
+                suffixSet = self.suffixCache.get(input_string[tokenLength:].lower(), set())
                 if not suffixSet:
                     # Compute partitions of the suffix.
-                    suffixSet.update(self.tokenize(corpus[tokenLength:]))
+                    suffixSet.update(self.tokenize(input_string[tokenLength:]))
                 # Cache tokenized suffixes.
-                if len(corpus[tokenLength:]) > 0 and cache:
-                    self.suffixCache.setdefault(corpus[tokenLength:].lower(), set()).update(suffixSet)
+                if len(input_string[tokenLength:]) > 0 and cache:
+                    self.suffixCache.setdefault(input_string[tokenLength:].lower(), set()).update(suffixSet)
                 # Combine prefix token with suffix tokenization.
-                output.extend([corpus[0:tokenLength].capitalize() + x for x in suffixSet])
+                output.extend([input_string[0:tokenLength].capitalize() + x for x in suffixSet])
         return output

@@ -192,9 +192,9 @@ def main():
     # nmrcs.clearMedianCache()
     # print(nmrcs.maxHeap, nmrcs.minHeap)
 
-    # print(f"Testing TokenPartition...")
+    # print(f"Testing CombinatorialTokenizer...")
     # tokenList = ["c", "ca", "th", "at", "he", "r", "i", "ne", "n", "e", "ly"]
-    # tPart = TokenPartition(tokenList)
+    # tPart = CombinatorialTokenizer(tokenList)
     # print(tPart)
     # EX1 = "CAthErinE"
     # EX2 = "cAitlYn"
