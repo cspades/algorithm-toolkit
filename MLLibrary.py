@@ -710,7 +710,7 @@ class GaussianMixture:
     
     def gramMatrix(self, tensor: Union[torch.Tensor, np.ndarray]):
         """
-        Compute a normalized Gram matrix, i.e. A^T A / sqrt(|A|).
+        Compute a normalized Gram matrix, i.e. sqrt(A^T A).
         """
         # Compute rank of tensor.
         tensorRank = len(tensor.shape)
@@ -718,7 +718,7 @@ class GaussianMixture:
             raise ValueError("Cannot construct Gram Matrix for Tensor with non-square tail dimensions, or Tensor(s) of rank < 2.")
         # Compute Gram Matrix.
         gram = torch.matmul(torch.transpose(tensor, tensorRank-2, tensorRank-1), tensor)
-        # Normalize.
+        # Normalize via square root of the absolute value of the Gram Matrix.
         gramAbsSqrt = torch.sqrt(gram.abs())
         return gram.sign() * gramAbsSqrt
     
