@@ -38,6 +38,12 @@ class DistributedTensor:
     DistributedTensor.all_gather("dp") => [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]
     DistributedTensor.reduce_scatter_tensor("dp", op=torch.mean) => [[1, 2], [5, 6], [9, 10]]
     DistributedTensor.broadcast("dp", src=1) => [[2, 3, 2, 3], [6, 7, 6, 7], [10, 11, 10, 11]]
+
+    Note: Given a list of Tensor indices corresponding to the dimensions of the Tensor,
+    you can use torch.meshgrid(*indices, indexing='ij') to index the Tensor. For instance,
+    given t = Tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]]) and
+    indices = [Tensor([0, 2]), Tensor([0, 2])], we have:
+    t[torch.meshgrid(*indices, indexing='ij')] = Tensor([[1, 3], [7, 9]])
     """
     pass
 
