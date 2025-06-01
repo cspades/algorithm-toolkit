@@ -17,14 +17,14 @@ from typing import Union, Callable, Tuple
 class DistributedTensor:
     """
     DistributedTensor class that performs distributed operations
-    on a "global" Tensor. Inspired by PyTorch's DTensor:
+    on a virtual "global" Tensor. Inspired by PyTorch's DTensor:
     https://docs.pytorch.org/docs/stable/distributed.tensor.html
 
-    # Initialization
+    # Global Initialization
     DistributedTensor.__init__(data=[
         [0, 1, 2, 3],
         [4, 5, 6, 7],
-        [8, 9, 10, 11]
+        [12, 13, 14, 15]
     ])
 
     # Process Group Registration
@@ -33,11 +33,23 @@ class DistributedTensor:
     DistributedTensor.get_process_group("cp") => {"dim": 0, "size": 3, "shard_size": 1}
 
     # Distributed Operations
-    DistributedTensor.get_local_shard("dp", rank=1) => [[2, 3], [6, 7], [10, 11]]
-    DistributedTensor.get_local_shard("cp", rank=2) => [[8, 9, 10, 11]]
-    DistributedTensor.all_gather("dp") => [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]
-    DistributedTensor.reduce_scatter_tensor("dp", op=torch.mean) => [[1, 2], [5, 6], [9, 10]]
-    DistributedTensor.broadcast("dp", src=1) => [[2, 3, 2, 3], [6, 7, 6, 7], [10, 11, 10, 11]]
+    DistributedTensor.get_local_shard("dp", rank=1)
+        => [[2, 3], [6, 7], [14, 15]]
+    DistributedTensor.get_local_shard("cp", rank=2)
+        => [[12, 13, 14, 15]]
+
+    DistributedTensor.all_gather("dp")
+        => [[0, 1, 2, 3], [4, 5, 6, 7], [12, 13, 14, 15]]
+
+    DistributedTensor.reduce_scatter_tensor("dp", op=torch.mean)
+        => [[1, 2], [5, 6], [13, 14]]
+    DistributedTensor.reduce_scatter_tensor("cp", op=torch.mean)
+        => [[5.33333333333, 6.33333333333, 7.33333333333, 8.33333333333]]
+
+    DistributedTensor.broadcast("dp", src=1)
+        => [[2, 3, 2, 3], [6, 7, 6, 7], [14, 15, 14, 15]]
+    DistributedTensor.broadcast("cp", src=0)
+        => [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]]
 
     Note: Given a list of Tensor indices corresponding to the dimensions of the Tensor,
     you can use torch.meshgrid(*indices, indexing='ij') to index the Tensor. For instance,
