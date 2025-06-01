@@ -14,6 +14,33 @@ from torch.optim import AdamW
 from torch.utils.data import Dataset, DataLoader
 from typing import Union, Callable, Tuple
 
+class DistributedTensor:
+    """
+    DistributedTensor class that performs distributed operations
+    on a "global" Tensor. Inspired by PyTorch's DTensor:
+    https://docs.pytorch.org/docs/stable/distributed.tensor.html
+
+    # Initialization
+    DistributedTensor.__init__(data=[
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [8, 9, 10, 11]
+    ])
+
+    # Process Group Registration
+    DistributedTensor.register_process_group(name="dp", dim=1, size=2)
+    DistributedTensor.register_process_group(name="cp", dim=0, size=3)
+    DistributedTensor.get_process_group("cp") => {"dim": 0, "size": 3, "shard_size": 1}
+
+    # Distributed Operations
+    DistributedTensor.get_local_shard("dp", rank=1) => [[2, 3], [6, 7], [10, 11]]
+    DistributedTensor.get_local_shard("cp", rank=2) => [[8, 9, 10, 11]]
+    DistributedTensor.all_gather("dp") => [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]]
+    DistributedTensor.reduce_scatter_tensor("dp", op=torch.mean) => [[1, 2], [5, 6], [9, 10]]
+    DistributedTensor.broadcast("dp", src=1) => [[2, 3, 2, 3], [6, 7, 6, 7], [10, 11, 10, 11]]
+    """
+    pass
+
 class RandomForest:
     """
     Implementation of a Random Forest, i.e. an ensemble of decision trees
